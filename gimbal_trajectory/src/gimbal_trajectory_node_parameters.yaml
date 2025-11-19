@@ -1,0 +1,6 @@
+gimbal_trajectory_node:
+  debug: {
+    type: bool,
+    default_value: true,
+    description: "whether to show debug info"
+  }
