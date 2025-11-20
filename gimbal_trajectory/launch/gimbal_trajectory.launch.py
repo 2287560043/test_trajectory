@@ -1,6 +1,6 @@
 from launch import LaunchDescription
 from launch_ros.actions import Node
-from launch.actions import DeclareLaunchArgument
+from launch.actions import DeclareLaunchArgument, SetEnvironmentVariable
 from launch.substitutions import LaunchConfiguration
 from ament_index_python.packages import get_package_share_directory
 import os
@@ -8,9 +8,13 @@ import os
 def generate_launch_description():
     pkg_share_dir = get_package_share_directory('gimbal_trajectory')
     
+    set_log_level = SetEnvironmentVariable(
+        'RCUTILS_LOGGING_SEVERITY', 'INFO' 
+    )
+    
     debug_arg = DeclareLaunchArgument(
         'debug',
-        default_value='true',
+        default_value='False',
         description='Whether to show debug info'
     )
     
@@ -22,12 +26,12 @@ def generate_launch_description():
         parameters=[{
             'debug': LaunchConfiguration('debug'),
         }],
-        # parameters=[os.path.join(pkg_share_dir, 'config', 'params.yaml')],
-        arguments=['--ros-args', '--log-level', 'info'],
+        arguments=['--ros-args', '--log-level', 'gimbal_trajectory_node:=debug'],
         emulate_tty=True,
     )
     
     return LaunchDescription([
+        set_log_level, 
         debug_arg,
         gimbal_trajectory_node,
     ])

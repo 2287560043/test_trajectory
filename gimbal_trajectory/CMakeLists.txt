@@ -23,7 +23,6 @@ generate_parameter_library(
   src/gimbal_trajectory_node_parameters.yaml # path to input yaml file
 )
 
-
 ament_auto_add_library(${PROJECT_NAME} SHARED
   DIRECTORY src
 )
@@ -38,6 +37,12 @@ target_link_libraries(
   ${OpenCV_LIBS}
   Eigen3::Eigen
   gimbal_trajectory_node_parameters
+)
+
+target_compile_definitions(${PROJECT_NAME} PRIVATE "GIMBAL_TRAJECTORY_BUILDING_DLL")
+
+target_include_directories(${PROJECT_NAME} PRIVATE
+  ${CMAKE_CURRENT_BINARY_DIR}
 )
 
 rclcpp_components_register_node(${PROJECT_NAME}
@@ -59,6 +64,4 @@ endif()
 install(DIRECTORY launch
   DESTINATION share/${PROJECT_NAME}
 )
-
-
 ament_auto_package()
