@@ -47,7 +47,7 @@ GimbalTrajectoryNode::~GimbalTrajectoryNode()
     RCLCPP_INFO(this->get_logger(), "GimbalTrajectoryNode destroyed");
 }
 void GimbalTrajectoryNode::gimbal_trajectory_callback(const autoaim_interfaces::msg::Target::SharedPtr target_msg) {
-    
+
 }
 
 } // namespace helios_cv
