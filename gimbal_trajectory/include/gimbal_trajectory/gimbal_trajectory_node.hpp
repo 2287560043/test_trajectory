@@ -3,6 +3,7 @@
 // ros
 #include <rclcpp/rclcpp.hpp>
 #include <rclcpp/logging.hpp>
+#include <iostream>
 
 
 class GimbalTrajectoryNode
