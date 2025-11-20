@@ -10,8 +10,6 @@ class GimbalTrajectoryNode
 public:
     GimbalTrajectoryNode(const rclcpp::NodeOptions & options);
     ~GimbalTrajectoryNode();
-
-
 private:
     
 };

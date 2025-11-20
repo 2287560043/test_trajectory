@@ -3,7 +3,6 @@
 
 GimbalTrajectoryNode::GimbalTrajectoryNode(const rclcpp::NodeOptions & options)
 {
-public:
     
     
 }
