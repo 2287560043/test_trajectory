@@ -1,4 +1,4 @@
-gimbal_trajectory_node:
+gimbal_planner_node:
   debug: {
     type: bool,
     default_value: true,

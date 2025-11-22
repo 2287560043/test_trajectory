@@ -18,20 +18,20 @@ def generate_launch_description():
         description='Whether to show debug info'
     )
     
-    gimbal_trajectory_node = Node(
-        package='gimbal_trajectory',
-        executable='gimbal_trajectory_node',
-        name='gimbal_trajectory_node',
+    gimbal_planner_node = Node(
+        package='gimbal_planner',
+        executable='gimbal_planner_node',
+        name='gimbal_planner_node',
         output='screen',
         parameters=[{
             'debug': LaunchConfiguration('debug'),
         }],
-        arguments=['--ros-args', '--log-level', 'gimbal_trajectory_node:=debug'],
+        arguments=['--ros-args', '--log-level', 'gimbal_planner_node:=debug'],
         emulate_tty=True,
     )
     
     return LaunchDescription([
         set_log_level, 
         debug_arg,
-        gimbal_trajectory_node,
+        gimbal_planner_node,
     ])

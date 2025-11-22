@@ -1,11 +1,11 @@
-#include "gimbal_trajectory/gimbal_trajectory_node.hpp"
+#include "autoaim_gimbal_planner/GimbalPlannerNode.hpp"
 #include <ament_index_cpp/get_package_share_directory.hpp>
 #include <rmw/qos_profiles.h>
 #include <tf2_ros/transform_listener.hpp>
 
 namespace helios_cv {
 
-GimbalTrajectoryNode::GimbalTrajectoryNode(const rclcpp::NodeOptions & options) 
+GimbalPlannerNode::GimbalPlannerNode(const rclcpp::NodeOptions & options) 
 : Node("gimbal_trajectory_node", options)
 {
     param_listener_ = std::make_shared<ParamListener>(this->get_node_parameters_interface());
@@ -39,19 +39,19 @@ GimbalTrajectoryNode::GimbalTrajectoryNode(const rclcpp::NodeOptions & options)
     tf2_filter_ = std::make_shared<tf2_filter>(target_sub_, *tf2_buffer_, "odoom", 10,
                                              this->get_node_logging_interface(), this->get_node_clock_interface(),
                                              std::chrono::duration<int>(2));
-    tf2_filter_->registerCallback(&GimbalTrajectoryNode::gimbal_trajectory_callback, this);
+    tf2_filter_->registerCallback(&GimbalPlannerNode::gimbal_planner_callback, this);
 }
 
-GimbalTrajectoryNode::~GimbalTrajectoryNode()
+GimbalPlannerNode::~GimbalPlannerNode()
 {
-    RCLCPP_INFO(this->get_logger(), "GimbalTrajectoryNode destroyed");
+    RCLCPP_INFO(this->get_logger(), "GimbalPlannerNode destroyed");
 }
-void GimbalTrajectoryNode::gimbal_trajectory_callback(const autoaim_interfaces::msg::Target::SharedPtr target_msg) {
-
+void GimbalPlannerNode::gimbal_planner_callback(const autoaim_interfaces::msg::Target::SharedPtr target_msg) {
+    
 }
 
 } // namespace helios_cv
 
 
 
-RCLCPP_COMPONENTS_REGISTER_NODE(helios_cv::GimbalTrajectoryNode)
+RCLCPP_COMPONENTS_REGISTER_NODE(helios_cv::GimbalPlannerNode)

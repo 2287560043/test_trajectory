@@ -10,7 +10,7 @@ if(CMAKE_COMPILER_IS_GNUCXX OR CMAKE_CXX_COMPILER_ID MATCHES "Clang")
   add_compile_options(-Wall -Wextra -Wpedantic)
 endif()
 
-project(gimbal_trajectory)
+project(gimbal_planner)
 
 find_package(ament_cmake_auto REQUIRED)
 find_package(OpenCV 4 REQUIRED)
@@ -19,8 +19,8 @@ find_package(Eigen3 REQUIRED)
 ament_auto_find_build_dependencies()
 
 generate_parameter_library(
-  gimbal_trajectory_node_parameters # cmake target name for the parameter library
-  src/gimbal_trajectory_node_parameters.yaml # path to input yaml file
+  gimbal_planner_node_parameters # cmake target name for the parameter library
+  src/gimbal_planner_node_parameters.yaml # path to input yaml file
 )
 
 ament_auto_add_library(${PROJECT_NAME} SHARED
@@ -36,7 +36,7 @@ target_link_libraries(
   ${PROJECT_NAME}
   ${OpenCV_LIBS}
   Eigen3::Eigen
-  gimbal_trajectory_node_parameters
+  gimbal_planner_node_parameters
 )
 
 target_compile_definitions(${PROJECT_NAME} PRIVATE "GIMBAL_TRAJECTORY_BUILDING_DLL")
@@ -46,7 +46,7 @@ target_include_directories(${PROJECT_NAME} PRIVATE
 )
 
 rclcpp_components_register_node(${PROJECT_NAME}
-  PLUGIN helios_cv::GimbalTrajectoryNode
+  PLUGIN helios_cv::GimbalPlannerNode
   EXECUTABLE ${PROJECT_NAME}_node
 )
 

@@ -5,7 +5,7 @@
 #include <rclcpp/logging.hpp>
 #include <rclcpp_components/register_node_macro.hpp>
 #include <rclcpp/parameter.hpp>
-#include "gimbal_trajectory/gimbal_trajectory_node_parameters.hpp"
+#include "gimbal_planner/gimbal_planner_node_parameters.hpp"
 #include <message_filters/subscriber.h>
 #include <tf2_ros/create_timer_ros.h>
 
@@ -28,19 +28,19 @@
 
 namespace helios_cv {
 
-using Params = gimbal_trajectory_node::Params;
-using ParamListener = gimbal_trajectory_node::ParamListener;
+using Params = gimbal_planner_node::Params;
+using ParamListener = gimbal_planner_node::ParamListener;
 using tf2_filter = tf2_ros::MessageFilter<autoaim_interfaces::msg::Target>;
 
 
-class GimbalTrajectoryNode : public rclcpp::Node
+class GimbalPlannerNode : public rclcpp::Node
 {
 public:
-    explicit GimbalTrajectoryNode(const rclcpp::NodeOptions & options);
-    ~GimbalTrajectoryNode();
+    explicit GimbalPlannerNode(const rclcpp::NodeOptions & options);
+    ~GimbalPlannerNode();
     
 private:
-    void gimbal_trajectory_callback(const autoaim_interfaces::msg::Target::SharedPtr target_msg);
+    void gimbal_planner_callback(const autoaim_interfaces::msg::Target::SharedPtr target_msg);
     
 
     autoaim_interfaces::msg::PlannedTarget planned_target_msg_;
