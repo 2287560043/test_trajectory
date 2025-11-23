@@ -27,6 +27,9 @@
 #include <autoaim_interfaces/msg/receive_data.hpp>
 #include "../../tinympc/types.hpp"
 #include "../../tinympc/tiny_api.hpp"
+#include "../../../autoaim_utilities/include/autoaim_utilities/BulletTrajectory.hpp"
+#include "../../../autoaim_utilities/include/autoaim_utilities/Target.hpp"
+// #include "../../tinympc/trajectory.hpp"
 
 
 namespace helios_cv {
@@ -39,6 +42,10 @@ constexpr double DT = 0.01;
 constexpr int HALF_HORIZON = 50;
 constexpr int HORIZON = HALF_HORIZON * 2;
 
+class Planner
+{
+    
+};
 
 class GimbalPlannerNode : public rclcpp::Node
 {
@@ -50,6 +57,7 @@ private:
     void gimbal_planner_callback(const autoaim_interfaces::msg::Target::SharedPtr target_msg);
     void init_yaw_planner();
     void init_pitch_planner();
+    Trajectory get_trajectory(const autoaim_interfaces::msg::Target::SharedPtr target_msg, double yaw0);
     
 
     autoaim_interfaces::msg::PlannedTarget planned_target_msg_;
@@ -86,11 +94,17 @@ private:
     double yaw_offset_;
     double pitch_offset_;
     double fire_thresh_;
+    double yaw0_;
+
+    // bullet trajectory
+    double bullet_speed_;
     
 
     double decision_speed_;
     double high_speed_delay_time_;
     double low_speed_delay_time_;
+
+    
 };
 
 } // namespace helios_cv

@@ -11,3 +11,6 @@ float64 radius_1
 float64 radius_2
 float64 dz
 string armor_type
+# add
+double fly_time
+double bullet_speed # 这个是送入predictor节点时刻从下位机获取的弹速

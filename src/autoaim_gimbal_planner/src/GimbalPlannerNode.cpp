@@ -17,9 +17,9 @@ GimbalPlannerNode::GimbalPlannerNode(const rclcpp::NodeOptions & options)
     decision_speed_ = params_.decision_speed;
     high_speed_delay_time_ = params_.high_speed_delay_time;
     low_speed_delay_time_ = params_.low_speed_delay_time;
-
-
-
+    
+    init_yaw_planner();
+    init_pitch_planner();
 
     cam_info_sub_ = this->create_subscription<sensor_msgs::msg::CameraInfo>(
         "/camera_info", rclcpp::SensorDataQoS(),
@@ -36,6 +36,8 @@ GimbalPlannerNode::GimbalPlannerNode(const rclcpp::NodeOptions & options)
                 last_autoaim_mode_ = mcu_packet->autoaim_mode;
                 this->set_parameter(param);
             }
+            yaw0_ = mcu_packet->yaw;
+            // bullet_speed_ = mcu_packet->bullet_speed;
         }
     );
     tf2_buffer_ = std::make_shared<tf2_ros::Buffer>(this->get_clock());
@@ -56,6 +58,7 @@ GimbalPlannerNode::~GimbalPlannerNode()
     RCLCPP_INFO(logger_, "GimbalPlannerNode destroyed");
 }
 void GimbalPlannerNode::gimbal_planner_callback(const autoaim_interfaces::msg::Target::SharedPtr target_msg) {
+    // ?
     if (param_listener_->is_old(params_)) {
         params_ = param_listener_->get_params();
         RCLCPP_WARN(logger_, "params updated");
@@ -65,14 +68,45 @@ void GimbalPlannerNode::gimbal_planner_callback(const autoaim_interfaces::msg::T
     double dt = time.seconds() - time_planner_start_;
     time_planner_start_ = time.seconds();
 
-    if (params_.autoaim_mode != 0 || dt < 0) {
+    if (dt < 0) {
         return;
     }
-    init_yaw_planner();
-    init_pitch_planner();
+
+    double yaw0 = target_msg->yaw;
+    Trajectory traj;
+
+    
 
 
 }
+
+Trajectory GimbalPlannerNode::get_trajectory(const autoaim_interfaces::msg::Target::SharedPtr target, double yaw0)
+{
+  Trajectory traj;
+
+  target.predict(-DT * (HALF_HORIZON + 1));
+  auto yaw_last = target
+  auto yaw_pitch_last = aim(target, bullet_speed);
+
+  target.predict(DT);  // [0] = -HALF_HORIZON * DT -> [HHALF_HORIZON] = 0
+  auto yaw_pitch = aim(target, bullet_speed);
+
+  for (int i = 0; i < HORIZON; i++) {
+    target.predict(DT);
+    auto yaw_pitch_next = aim(target, bullet_speed);
+
+    auto yaw_vel = tools::limit_rad(yaw_pitch_next(0) - yaw_pitch_last(0)) / (2 * DT);
+    auto pitch_vel = (yaw_pitch_next(1) - yaw_pitch_last(1)) / (2 * DT);
+
+    traj.col(i) << tools::limit_rad(yaw_pitch(0) - yaw0), yaw_vel, yaw_pitch(1), pitch_vel;
+
+    yaw_pitch_last = yaw_pitch;
+    yaw_pitch = yaw_pitch_next;
+  }
+
+  return traj;
+}
+
 
 void GimbalPlannerNode::init_yaw_planner() {
     auto max_yaw_acc = params_.max_yaw_acc;
