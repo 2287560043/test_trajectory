@@ -1,6 +1,7 @@
 #pragma once
 
 // ros
+#include <rclcpp/logger.hpp>
 #include <rclcpp/rclcpp.hpp>
 #include <rclcpp/logging.hpp>
 #include <rclcpp_components/register_node_macro.hpp>
@@ -24,6 +25,8 @@
 #include <autoaim_interfaces/msg/planned_target.hpp>
 #include <autoaim_interfaces/msg/target.hpp>
 #include <autoaim_interfaces/msg/receive_data.hpp>
+#include "../../tinympc/types.hpp"
+#include "../../tinympc/tiny_api.hpp"
 
 
 namespace helios_cv {
@@ -31,6 +34,10 @@ namespace helios_cv {
 using Params = gimbal_planner_node::Params;
 using ParamListener = gimbal_planner_node::ParamListener;
 using tf2_filter = tf2_ros::MessageFilter<autoaim_interfaces::msg::Target>;
+
+constexpr double DT = 0.01;
+constexpr int HALF_HORIZON = 50;
+constexpr int HORIZON = HALF_HORIZON * 2;
 
 
 class GimbalPlannerNode : public rclcpp::Node
@@ -41,6 +48,8 @@ public:
     
 private:
     void gimbal_planner_callback(const autoaim_interfaces::msg::Target::SharedPtr target_msg);
+    void init_yaw_planner();
+    void init_pitch_planner();
     
 
     autoaim_interfaces::msg::PlannedTarget planned_target_msg_;
@@ -61,9 +70,27 @@ private:
     rclcpp::Subscription<autoaim_interfaces::msg::ReceiveData>::SharedPtr serial_sub_;
     int last_autoaim_mode_;
 
-
+    // params
     Params params_;
     std::shared_ptr<ParamListener> param_listener_;
+
+    // logger
+    rclcpp::Logger logger_ = rclcpp::get_logger("GimbalPlannerNode");
+
+    // time
+    double time_planner_start_;
+
+    // planners
+    TinySolver* yaw_planner_;
+    TinySolver* pitch_planner_;
+    double yaw_offset_;
+    double pitch_offset_;
+    double fire_thresh_;
+    
+
+    double decision_speed_;
+    double high_speed_delay_time_;
+    double low_speed_delay_time_;
 };
 
 } // namespace helios_cv
