@@ -12,38 +12,27 @@
 
 namespace helios_cv
 {
-const int RED = 0;
-const int BLUE = 1;
+enum Color
+{
+  RED ,
+  BLUE ,
+  EXTINGUISH ,
+  PURPLE 
+};
+const std::vector<std::string> COLORS = {"red", "blue", "extinguish", "purple"};
 
 enum ArmorType
 {
   SMALL,
   LARGE,
+  // 由于还没有energy的专属类，所以energy临时寄放在这里
   ENERGY_FAN,
   ENERGY_TARGET,
+  
   INVALID
+
 };
-
-typedef enum
-{
-  LOST,
-  TEMP_LOST,
-  TRACKING,
-  DETECTING
-} TrakerState;
-
-// typedef enum
-// {
-//   OUTPOST,
-//   NORMAL
-// } TargetType;
-
-enum AUTOAIM_MODE
-{
-  AUTOAIM = 0,
-  SMALL_ENERGY = 1,
-  BIG_ENERGY = 2,
-};
+const std::vector<std::string> ARMOR_TYPE_STR = {"small", "large"};
 
 enum ArmorPriority
 {
@@ -53,21 +42,22 @@ enum ArmorPriority
   FOURTH,
   FIFTH
 };
+const std::vector<std::string> ARMOR_PRIORITY_STR = {"first", "sencond", "third", "fourth", "fifth"};
 
-enum ArmorName
-{
-  ONE,
-  TWO,
-  THREE,
-  FOUR,
-  FIVE,
-  SENTRY,
-  OUTPOST,
-  BASE,
-  NO_ARMOR
-};
+// enum ArmorName
+// {
+//   ONE,
+//   TWO,
+//   THREE,
+//   FOUR,
+//   FIVE,
+//   SENTRY,
+//   OUTPOST,
+//   BASE
+// };
+// const std::vector<std::string> ARMOR_NAME_STR = {"one", "two", "three", "four", "five", "sentry", "outpost", "base"};
 
-const std::string ARMOR_TYPE_STR[3] = { "SMALL", "LARGE", "INVALID" };
+
 
 struct Light : public cv::RotatedRect
 {

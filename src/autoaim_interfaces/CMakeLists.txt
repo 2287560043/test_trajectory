@@ -35,6 +35,7 @@ rosidl_generate_interfaces(${PROJECT_NAME}
 
   # add
   "msg/PlannedTarget.msg"
+  "msg/PreTrajectory.msg"
   DEPENDENCIES
     std_msgs
     sensor_msgs

@@ -80,32 +80,34 @@ void GimbalPlannerNode::gimbal_planner_callback(const autoaim_interfaces::msg::T
 
 }
 
-Trajectory GimbalPlannerNode::get_trajectory(const autoaim_interfaces::msg::Target::SharedPtr target, double yaw0)
-{
-  Trajectory traj;
+// Trajectory GimbalPlannerNode::get_trajectory(double yaw0)
+// {
+//   Trajectory traj;
 
-  target.predict(-DT * (HALF_HORIZON + 1));
-  auto yaw_last = target
-  auto yaw_pitch_last = aim(target, bullet_speed);
 
-  target.predict(DT);  // [0] = -HALF_HORIZON * DT -> [HHALF_HORIZON] = 0
-  auto yaw_pitch = aim(target, bullet_speed);
 
-  for (int i = 0; i < HORIZON; i++) {
-    target.predict(DT);
-    auto yaw_pitch_next = aim(target, bullet_speed);
+//   target.predict(-DT * (HALF_HORIZON + 1));
+//   auto yaw_last = target
+//   auto yaw_pitch_last = aim(target, bullet_speed);
 
-    auto yaw_vel = tools::limit_rad(yaw_pitch_next(0) - yaw_pitch_last(0)) / (2 * DT);
-    auto pitch_vel = (yaw_pitch_next(1) - yaw_pitch_last(1)) / (2 * DT);
+//   target.predict(DT);  // [0] = -HALF_HORIZON * DT -> [HHALF_HORIZON] = 0
+//   auto yaw_pitch = aim(target, bullet_speed);
 
-    traj.col(i) << tools::limit_rad(yaw_pitch(0) - yaw0), yaw_vel, yaw_pitch(1), pitch_vel;
+//   for (int i = 0; i < HORIZON; i++) {
+//     target.predict(DT);
+//     auto yaw_pitch_next = aim(target, bullet_speed);
 
-    yaw_pitch_last = yaw_pitch;
-    yaw_pitch = yaw_pitch_next;
-  }
+//     auto yaw_vel = tools::limit_rad(yaw_pitch_next(0) - yaw_pitch_last(0)) / (2 * DT);
+//     auto pitch_vel = (yaw_pitch_next(1) - yaw_pitch_last(1)) / (2 * DT);
 
-  return traj;
-}
+//     traj.col(i) << tools::limit_rad(yaw_pitch(0) - yaw0), yaw_vel, yaw_pitch(1), pitch_vel;
+
+//     yaw_pitch_last = yaw_pitch;
+//     yaw_pitch = yaw_pitch_next;
+//   }
+
+//   return traj;
+// }
 
 
 void GimbalPlannerNode::init_yaw_planner() {

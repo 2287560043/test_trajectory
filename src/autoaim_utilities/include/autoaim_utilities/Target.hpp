@@ -9,10 +9,34 @@
 
 namespace helios_cv
 {
+
+typedef enum
+{
+  LOST,
+  TEMP_LOST,
+  TRACKING,
+  DETECTING
+} TrakerState;
+
+enum AUTOAIM_MODE
+{
+  AUTOAIM = 0,
+  SMALL_ENERGY = 1,
+  BIG_ENERGY = 2,
+};
+
+// 强行兼容的权宜之计
+enum TargetType
+{
+  OUTPOST,
+  NORMAL
+};
+
+
 class Target
 {
 public:
-  ArmorName name;
+  std::string armor_number;
   ArmorType armor_type;
   ArmorPriority priority;
   bool jumped;

@@ -22,6 +22,7 @@
 #include "autoaim_interfaces/msg/armors.hpp"
 #include "autoaim_interfaces/msg/target.hpp"
 #include "autoaim_utilities/Armor.hpp"
+#include "autoaim_utilities/Target.hpp"
 #include "autoaim_utilities/ExtendedKalmanFilter.hpp"
 #include "geometry_msgs/msg/point_stamped.hpp"
 #include "sensor_msgs/msg/camera_info.hpp"
@@ -61,7 +62,7 @@ public:
 
   virtual void set_params(void* params) = 0;
 
-  TargetType target_type_ = NORMAL;
+  TargetType target_type_ = TargetType::NORMAL;
   int find_state_;
 
 protected:
