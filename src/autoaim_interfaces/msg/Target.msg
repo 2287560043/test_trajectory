@@ -15,4 +15,5 @@ string armor_type
 float64 fly_time
 float64 bullet_speed # 这个是送入predictor节点时刻从下位机获取的弹速
 PreTrajectory[] pretraj # 命中时刻前后一段时间的理想云台轨迹
+float64 pitch
 

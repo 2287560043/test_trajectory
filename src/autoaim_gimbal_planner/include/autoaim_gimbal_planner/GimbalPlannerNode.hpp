@@ -38,9 +38,10 @@ using Params = gimbal_planner_node::Params;
 using ParamListener = gimbal_planner_node::ParamListener;
 using tf2_filter = tf2_ros::MessageFilter<autoaim_interfaces::msg::Target>;
 
-constexpr double DT = 0.01;
-constexpr int HALF_HORIZON = 50;
-constexpr int HORIZON = HALF_HORIZON * 2;
+// 以下参数位于BulletTrajectory.hpp
+// constexpr double DT = 0.01;
+// constexpr int HALF_HORIZON = 50;
+// constexpr int HORIZON = HALF_HORIZON * 2;
 
 class Planner
 {

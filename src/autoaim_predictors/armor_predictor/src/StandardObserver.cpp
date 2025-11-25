@@ -3,10 +3,12 @@
 // for more see document:
 // https://swjtuhelios.feishu.cn/docx/MfCsdfRxkoYk3oxWaazcfUpTnih?from=from_copylink
 #include "StandardObserver.hpp"
+#include "BaseObserver.hpp"
 
 #include <Eigen/src/Core/Matrix.h>
 #include <Eigen/src/Geometry/Quaternion.h>
 #include <angles/angles.h>
+#include <autoaim_utilities/BulletTrajectory.hpp>
 #include <tf2/LinearMath/Quaternion.h>
 
 #include <autoaim_interfaces/msg/detail/armor__struct.hpp>
@@ -20,6 +22,7 @@
 #include <rclcpp/logging.hpp>
 #include <tf2_geometry_msgs/tf2_geometry_msgs.hpp>
 #include <vector>
+#include "autoaim_utilities/ExtendedKalmanFilter.hpp"
 
 namespace helios_cv
 {
@@ -27,31 +30,49 @@ StandardObserver::StandardObserver(const StandardObserverParams& params) : param
 {
   find_state_ = LOST;
   // init kalman filter
-  auto f = [this](const Eigen::VectorXd& x) {
+  double dt = BaseObserver::dt_;
+
+  auto funcs = setup_ekf_funcs(dt, params_);
+  ekf_ = ExtendedKalmanFilter{
+      funcs.f,
+      funcs.h,
+      funcs.j_f,
+      funcs.j_h,
+      funcs.update_Q,
+      funcs.update_R,
+      funcs.measurement_diff,
+      funcs.p0
+  };
+}
+
+EkfFuncs StandardObserver::setup_ekf_funcs(double dt, const StandardObserverParams& params)
+{
+  params_ = params;
+  auto f = [&](const Eigen::VectorXd& x) {
     Eigen::VectorXd x_new = x;
-    x_new(0) += x(1) * dt_;
-    x_new(2) += x(3) * dt_;
-    x_new(8) += x(9) * dt_;
+    x_new(0) += x(1) * dt;
+    x_new(2) += x(3) * dt;
+    x_new(8) += x(9) * dt;
     return x_new;
   };
-  auto j_f = [this](const Eigen::VectorXd&) {
+  auto j_f = [&](const Eigen::VectorXd&) {
     Eigen::MatrixXd f(10, 10);
     // clang-format off
         //     xc vxc   yc vyc   z1 z2 r1 r2 yaw vyaw
-        f <<   1, dt_,  0, 0,    0, 0, 0, 0, 0, 0,
+        f <<   1, dt,   0, 0,    0, 0, 0, 0, 0, 0,
                0, 1,    0, 0,    0, 0, 0, 0, 0, 0,
-               0, 0,    1, dt_,  0, 0, 0, 0, 0, 0,
+               0, 0,    1, dt,   0, 0, 0, 0, 0, 0,
                0, 0,    0, 1,    0, 0, 0, 0, 0, 0,
                0, 0,    0, 0,    1, 0, 0, 0, 0, 0,
                0, 0,    0, 0,    0, 1, 0, 0, 0, 0,
                0, 0,    0, 0,    0, 0, 1, 0, 0, 0,
                0, 0,    0, 0,    0, 0, 0, 1, 0, 0,
-               0, 0,    0, 0,    0, 0, 0, 0, 1, dt_,
+               0, 0,    0, 0,    0, 0, 0, 0, 1, dt,
                0, 0,    0, 0,    0, 0, 0, 0, 0, 1;
     // clang-format on
     return f;
   };
-  auto h = [this](const Eigen::VectorXd& x) {
+  auto h = [&](const Eigen::VectorXd& x) {
     if (armor_match_.size() == 2)
     {
       int sec1 = armor_match_.begin()->second;
@@ -118,8 +139,8 @@ StandardObserver::StandardObserver(const StandardObserverParams& params) : param
     }
   };
   // update_Q - process noise covariance matrix
-  auto update_Q = [this](const Eigen::VectorXd& X) -> Eigen::MatrixXd {
-    double t = dt_, x = params_.ekf_params.sigma2_q_xyz, y = params_.ekf_params.sigma2_q_yaw,
+  auto update_Q = [&](const Eigen::VectorXd& X) -> Eigen::MatrixXd {
+    double t = dt, x = params_.ekf_params.sigma2_q_xyz, y = params_.ekf_params.sigma2_q_yaw,
            r = params_.ekf_params.sigma2_q_r;
     double q_z_z = params_.ekf_params.sigma2_q_z;
     double q_x_x = pow(t, 4) / 4 * x, q_x_vx = pow(t, 3) / 2 * x, q_vx_vx = pow(t, 2) * x;
@@ -142,7 +163,7 @@ StandardObserver::StandardObserver(const StandardObserverParams& params) : param
     return q;
   };
   // update_R - observation noise covariance matrix
-  auto update_R = [this](const Eigen::VectorXd& z) -> Eigen::MatrixXd {
+  auto update_R = [&](const Eigen::VectorXd& z) -> Eigen::MatrixXd {
     if (armor_match_.size() == 2)
     {
       Eigen::DiagonalMatrix<double, 8> r;
@@ -177,7 +198,8 @@ StandardObserver::StandardObserver(const StandardObserverParams& params) : param
   };
   Eigen::DiagonalMatrix<double, 10> p0;
   p0.setIdentity();
-  ekf_ = ExtendedKalmanFilter{ f, h, j_f, j_h, update_Q, update_R, measurement_diff, p0 };
+
+  return EkfFuncs{f, j_f, h, j_h, update_Q, update_R, measurement_diff, p0};
 }
 
 void StandardObserver::set_params(void* params)
@@ -185,8 +207,82 @@ void StandardObserver::set_params(void* params)
   params_ = *static_cast<StandardObserverParams*>(params);
 }
 
+Eigen::Matrix<double, 4, HORIZON> StandardObserver::get_trajectory()
+{
+  Eigen::Matrix<double, 4, HORIZON> traj1;                           // HORIZON × 4
+  Trajectory traj;
+  constexpr double dt = DT;
+
+
+  auto funcs = setup_ekf_funcs(-DT * (HALF_HORIZON + 1), params_);
+  ExtendedKalmanFilter ekf = ExtendedKalmanFilter{
+      funcs.f,
+      funcs.h,
+      funcs.j_f,
+      funcs.j_h,
+      funcs.update_Q,
+      funcs.update_R,
+      funcs.measurement_diff,
+      funcs.p0
+  };
+  Eigen::VectorXd current_state = target_state_;
+  ekf.setState(current_state);
+  ekf.Predict();
+  auto yaw_pitch_flytime_last = traj.bullet_solve(current_state(0), current_state(2), current_state(4), bullet_speed_);
+
+  auto funcs2 = setup_ekf_funcs(DT, params_);
+  ExtendedKalmanFilter ekf2 = ExtendedKalmanFilter{
+      funcs.f,
+      funcs.h,
+      funcs.j_f,
+      funcs.j_h,
+      funcs.update_Q,
+      funcs.update_R,
+      funcs.measurement_diff,
+      funcs.p0
+  };
+  Eigen::VectorXd current_state2 = current_state;
+  ekf.setState(current_state2);
+  ekf.Predict();
+  auto yaw_pitch_flytime = traj.bullet_solve(current_state2(0), current_state2(2), current_state2(4), bullet_speed_);
+
+    for (int i = 0; i < HORIZON; i++) {
+        ekf2.Predict();
+
+        auto yaw_pitch_flytime_next = traj.bullet_solve(
+            current_state2(0),
+            current_state2(2),
+            current_state2(4),
+            bullet_speed_
+        );
+
+        // ---- 手写 wrap 到 [-pi, pi] ----
+        auto wrap = [](double a) {
+            while (a >  M_PI) a -= 2.0 * M_PI;
+            while (a < -M_PI) a += 2.0 * M_PI;
+            return a;
+        };
+
+        double yaw_delta  = wrap(yaw_pitch_flytime_next(0) - yaw_pitch_flytime_last(0));
+        double yaw_vel    = yaw_delta / (2 * DT);
+
+        double pitch_vel  = (yaw_pitch_flytime_next(1) - yaw_pitch_flytime_last(1)) / (2 * DT);
+
+        traj1.col(i) <<
+            wrap(yaw_pitch_flytime(0) - yaw0),
+            yaw_vel,
+            yaw_pitch_flytime(1),
+            pitch_vel;
+
+        yaw_pitch_flytime_last = yaw_pitch_flytime;
+        yaw_pitch_flytime      = yaw_pitch_flytime_next;
+    }
+    return traj1;
+}
+
 autoaim_interfaces::msg::Target StandardObserver::predict_target(autoaim_interfaces::msg::Armors armors, double dt)
 {
+  // dt 取决于上一次预测消耗的时间
   dt_ = dt;
   autoaim_interfaces::msg::Target target;
   target.header.frame_id = params_.target_frame;
@@ -254,6 +350,14 @@ autoaim_interfaces::msg::Target StandardObserver::predict_target(autoaim_interfa
     // Update threshold of temp lost
     params_.max_lost = std::max(static_cast<int>(params_.lost_time_thresh / dt_), 5);
   }
+
+  // Trajectory traj;
+  // for(int i =0; i < HORIZON; i++) {
+    
+  // }
+  // target.pitch = traj.bullet_solve(target_state_(0), target_state_(2), target_state_(4), target.bullet_speed)(0);  
+  // target.yaw = traj.bullet_solver(target_state_(0), target_state_(2), target_state_(4), target.bullet_speed)(1);
+
   return target;
 }
 

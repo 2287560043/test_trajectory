@@ -126,6 +126,8 @@ private:
   void create_visualization_markers();
   void check_and_kill_invalid(const autoaim_interfaces::msg::Target& target_msg);
 
+  Trajectory get_trajectory(double yaw0, double bullet_speed);
+
   rclcpp::Logger logger_ = rclcpp::get_logger("ArmorPredictorNode");
 };
 

@@ -74,9 +74,7 @@ void GimbalPlannerNode::gimbal_planner_callback(const autoaim_interfaces::msg::T
 
     double yaw0 = target_msg->yaw;
     Trajectory traj;
-
     
-
 
 }
 

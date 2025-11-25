@@ -4,6 +4,7 @@
 #pragma once
 
 #include "BaseObserver.hpp"
+#include "autoaim_utilities/BulletTrajectory.hpp"
 
 namespace helios_cv
 {
@@ -40,10 +41,18 @@ public:
   StandardObserver(const StandardObserverParams& params);
 
   autoaim_interfaces::msg::Target predict_target(autoaim_interfaces::msg::Armors armors, double dt) override;
+  
+  // 基于当前状态（目标命中时刻），用于预测dt秒后的目标状态，内部不处理选板逻辑
+  Eigen::Matrix<double, 4, HORIZON> get_trajectory();
+
+  EkfFuncs setup_ekf_funcs(double dt, const StandardObserverParams& params);
+  // void setup_update_ekf(const StandardObserverParams& params);
 
   void reset_kalman() override;
 
   void set_params(void* params) override;
+
+  // Trajectory get_trajectory(double yaw0, double bullet_speed);
 
 protected:
   StandardObserver() = default;
@@ -54,7 +63,10 @@ protected:
 
   // kalman utilities
   ExtendedKalmanFilter ekf_;
+  ExtendedKalmanFilter update_ekf_;
   std::map<int, int> armor_match_;
+  double bullet_speed_;
+  double yaw0;
 
 private:
   // Params
