@@ -56,7 +56,7 @@ public:
 class BaseObserver
 {
 public:
-  virtual autoaim_interfaces::msg::Target predict_target(autoaim_interfaces::msg::Armors armors, double dt) = 0;
+  virtual autoaim_interfaces::msg::Target predict_target(autoaim_interfaces::msg::Armors armors, double dt, double yaw, double bullet_speed) = 0;
 
   virtual void reset_kalman() = 0;
 

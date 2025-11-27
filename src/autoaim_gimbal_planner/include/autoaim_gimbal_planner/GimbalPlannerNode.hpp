@@ -29,6 +29,7 @@
 #include "../../tinympc/tiny_api.hpp"
 #include "../../../autoaim_utilities/include/autoaim_utilities/BulletTrajectory.hpp"
 #include "../../../autoaim_utilities/include/autoaim_utilities/Target.hpp"
+#include "../../../autoaim_utilities/include/autoaim_utilities/Math.hpp"
 // #include "../../tinympc/trajectory.hpp"
 
 

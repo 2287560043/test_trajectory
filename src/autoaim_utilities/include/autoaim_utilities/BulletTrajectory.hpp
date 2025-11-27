@@ -1,29 +1,50 @@
 #pragma once
-#include <Eigen/Core>
-#include <Eigen/Dense>
+#include <cmath>
+#include <vector>
 
 namespace helios_cv
 {
+const double K = 0.022928514188;
+const double G = 9.7833;
+const double PREC = 1e-3;
+const int MAX_ITER = 15;
+
 constexpr double DT = 0.01;
 constexpr int HALF_HORIZON = 50;
 constexpr int HORIZON = HALF_HORIZON * 2;
-constexpr double K = 0.022928514188;
-constexpr double G = 9.7833;
 
-struct Trajectory
+class Trajectory
 {
-  bool unsolvable;
-  double fly_time;
-  double pitch;  // 抬头为正
+public:
+    Trajectory() = default;
 
-  // 考虑空气阻力
-  // v0 子弹初速度大小，单位：m/s
-  // d 目标水平距离，单位：m
-  // h 目标竖直高度，单位：m
-  Trajectory(const double v0, const double d, const double h);
-  Trajectory() = default;
-  Eigen::Matrix<double, 3, 1> bullet_solve(double x, double y, double z, double bullet_speed);
+    Trajectory(const std::vector<double>& xyz, double bullet_speed)
+    {
+        set(xyz, bullet_speed);
+    }
 
+    void set(const std::vector<double>& xyz, double bullet_speed)
+    {
+        xyz_ = xyz;
+        bullet_speed_ = bullet_speed;
+        solve();
+    }
+
+    bool solvable() const { return solvable_; }
+    double pitch() const { return pitch_; }
+    double yaw() const { return yaw_; }
+    double flyTime() const { return fly_time_; }
+
+private:
+    std::vector<double> xyz_;
+    double bullet_speed_ = 0.0;
+
+    bool solvable_ = false;
+    double fly_time_ = 0.0;
+    double pitch_ = 0.0;
+    double yaw_ = 0.0;
+
+    void solve();
 };
 
-}  // namespace helios_cv
+} // namespace helios_cv

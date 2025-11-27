@@ -72,6 +72,9 @@ ArmorPredictorNode::ArmorPredictorNode(const rclcpp::NodeOptions& options) : rcl
         rclcpp::Parameter param("autoaim_mode", mcu_packet->autoaim_mode);
         last_autoaim_mode_ = mcu_packet->autoaim_mode;
         this->set_parameter(param);
+
+        yaw_ = mcu_packet->yaw;
+        bullet_speed_ = mcu_packet->bullet_speed;
       }
     }
   );
@@ -159,6 +162,8 @@ void ArmorPredictorNode::armor_predictor_callback(autoaim_interfaces::msg::Armor
   }
   // build time series
   rclcpp::Time time = armors_msg->header.stamp;
+
+  // dt = predict_time + 下位机耗时 + detect_time ????
   double dt = time.seconds() - time_predictor_start_;
   time_predictor_start_ = time.seconds();
 
@@ -195,7 +200,7 @@ void ArmorPredictorNode::armor_predictor_callback(autoaim_interfaces::msg::Armor
   }
 
   // doing predict
-  target_msg_ = vehicle_observer_->predict_target(*armors_msg, dt);
+  target_msg_ = vehicle_observer_->predict_target(*armors_msg, dt, yaw_, bullet_speed_);
   target_msg_.gimbal_id = gimbal_id_;
   // choose predict mode
   update_predictor_type(vehicle_observer_);

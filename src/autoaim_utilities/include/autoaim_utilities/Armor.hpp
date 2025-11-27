@@ -32,7 +32,7 @@ enum ArmorType
   INVALID
 
 };
-const std::vector<std::string> ARMOR_TYPE_STR = {"small", "large"};
+const std::vector<std::string> ARMOR_TYPE_STR = {"small", "large", "energy_fan", "energy_target", "invalid"};
 
 enum ArmorPriority
 {
@@ -44,6 +44,7 @@ enum ArmorPriority
 };
 const std::vector<std::string> ARMOR_PRIORITY_STR = {"first", "sencond", "third", "fourth", "fifth"};
 
+// 从分类器开始就已经存在一套命名体系，所以这里就不重复命名了
 // enum ArmorName
 // {
 //   ONE,

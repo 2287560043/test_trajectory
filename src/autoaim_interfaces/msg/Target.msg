@@ -1,4 +1,5 @@
 std_msgs/Header header
+# 暂留
 bool tracking
 uint8 gimbal_id
 string id
@@ -11,9 +12,9 @@ float64 radius_1
 float64 radius_2
 float64 dz
 string armor_type
-# add
-float64 fly_time
-float64 bullet_speed # 这个是送入predictor节点时刻从下位机获取的弹速
-PreTrajectory[] pretraj # 命中时刻前后一段时间的理想云台轨迹
-float64 pitch
+
+
+PreTrajectory[] pretraj     # 命中时刻前后一段时间的理想云台轨迹
+float64 yaw0
+
 

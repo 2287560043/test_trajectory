@@ -5,9 +5,15 @@
 
 #include "BaseObserver.hpp"
 #include "autoaim_utilities/BulletTrajectory.hpp"
+#include "autoaim_utilities/Armor.hpp"
+#include "autoaim_utilities/Target.hpp"
+#include <autoaim_interfaces/msg/detail/armors__struct.hpp>
+#include "autoaim_utilities/Math.hpp"
 
 namespace helios_cv
 {
+  // target_state = [x, vx, y, vy, z, dh, r1, r2, yaw, vyaw]
+  //                 0  1   2  3   4  5   6   7   8    9
 
 typedef struct StandardObserverParams : public BaseObserverParams
 {
@@ -35,18 +41,22 @@ typedef struct StandardObserverParams : public BaseObserverParams
   }
 } StandardObserverParams;
 
+
+
 class StandardObserver : public BaseObserver
 {
 public:
   StandardObserver(const StandardObserverParams& params);
 
-  autoaim_interfaces::msg::Target predict_target(autoaim_interfaces::msg::Armors armors, double dt) override;
+  autoaim_interfaces::msg::Target predict_target(autoaim_interfaces::msg::Armors armors, double dt, double yaw, double bullet_speed) override;
   
   // 基于当前状态（目标命中时刻），用于预测dt秒后的目标状态，内部不处理选板逻辑
   Eigen::Matrix<double, 4, HORIZON> get_trajectory();
 
-  EkfFuncs setup_ekf_funcs(double dt, const StandardObserverParams& params);
-  // void setup_update_ekf(const StandardObserverParams& params);
+  // 基于当前状态, 选择最合适的装甲板，返回装甲板的xyz坐标(四个标准位置选一个)
+  std::vector<double> choose_aim_point(const Eigen::VectorXd& state);
+
+  ExtendedKalmanFilter set_ekf(double dt);
 
   void reset_kalman() override;
 
@@ -57,16 +67,18 @@ public:
 protected:
   StandardObserver() = default;
 
-  void track_armor(autoaim_interfaces::msg::Armors armors) override;
+  void track_armor(autoaim_interfaces::msg::Armors armors)override;
 
   Eigen::Vector3d state2position(const Eigen::VectorXd& state) override;
+
 
   // kalman utilities
   ExtendedKalmanFilter ekf_;
   ExtendedKalmanFilter update_ekf_;
   std::map<int, int> armor_match_;
   double bullet_speed_;
-  double yaw0;
+  double gimbal_yaw_;
+  double yaw0_;
 
 private:
   // Params

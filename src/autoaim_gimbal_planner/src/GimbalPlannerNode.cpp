@@ -1,5 +1,6 @@
 #include "autoaim_gimbal_planner/GimbalPlannerNode.hpp"
 #include <ament_index_cpp/get_package_share_directory.hpp>
+#include <autoaim_interfaces/msg/detail/planned_target__struct.hpp>
 #include <rmw/qos_profiles.h>
 #include <tf2_ros/transform_listener.hpp>
 
@@ -21,25 +22,23 @@ GimbalPlannerNode::GimbalPlannerNode(const rclcpp::NodeOptions & options)
     init_yaw_planner();
     init_pitch_planner();
 
-    cam_info_sub_ = this->create_subscription<sensor_msgs::msg::CameraInfo>(
-        "/camera_info", rclcpp::SensorDataQoS(),
-        [this](sensor_msgs::msg::CameraInfo::SharedPtr camera_info) {
-            cam_center_ = cv::Point2f(camera_info->k[2], camera_info->k[5]);
-            cam_info_ = std::make_shared<sensor_msgs::msg::CameraInfo>(*camera_info);
-            cam_info_sub_.reset();
-        });
-    serial_sub_ = this->create_subscription<autoaim_interfaces::msg::ReceiveData>(
-        "/receive_data", rclcpp::SensorDataQoS(), 
-        [this] (autoaim_interfaces::msg::ReceiveData::SharedPtr mcu_packet) {
-            if (last_autoaim_mode_ != mcu_packet->autoaim_mode) {
-                rclcpp::Parameter param("autoaim_mode", mcu_packet->autoaim_mode);
-                last_autoaim_mode_ = mcu_packet->autoaim_mode;
-                this->set_parameter(param);
-            }
-            yaw0_ = mcu_packet->yaw;
-            // bullet_speed_ = mcu_packet->bullet_speed;
-        }
-    );
+    // cam_info_sub_ = this->create_subscription<sensor_msgs::msg::CameraInfo>(
+    //     "/camera_info", rclcpp::SensorDataQoS(),
+    //     [this](sensor_msgs::msg::CameraInfo::SharedPtr camera_info) {
+    //         cam_center_ = cv::Point2f(camera_info->k[2], camera_info->k[5]);
+    //         cam_info_ = std::make_shared<sensor_msgs::msg::CameraInfo>(*camera_info);
+    //         cam_info_sub_.reset();
+    //     });
+    // serial_sub_ = this->create_subscription<autoaim_interfaces::msg::ReceiveData>(
+    //     "/receive_data", rclcpp::SensorDataQoS(), 
+    //     [this] (autoaim_interfaces::msg::ReceiveData::SharedPtr mcu_packet) {
+    //         if (last_autoaim_mode_ != mcu_packet->autoaim_mode) {
+    //             rclcpp::Parameter param("autoaim_mode", mcu_packet->autoaim_mode);
+    //             last_autoaim_mode_ = mcu_packet->autoaim_mode;
+    //             this->set_parameter(param);
+    //         }
+    //     }
+    // );
     tf2_buffer_ = std::make_shared<tf2_ros::Buffer>(this->get_clock());
     auto timer_interface = 
         std::make_shared<tf2_ros::CreateTimerROS>(this->get_node_base_interface(), this->get_node_timers_interface());
@@ -58,7 +57,7 @@ GimbalPlannerNode::~GimbalPlannerNode()
     RCLCPP_INFO(logger_, "GimbalPlannerNode destroyed");
 }
 void GimbalPlannerNode::gimbal_planner_callback(const autoaim_interfaces::msg::Target::SharedPtr target_msg) {
-    // ?
+
     if (param_listener_->is_old(params_)) {
         params_ = param_listener_->get_params();
         RCLCPP_WARN(logger_, "params updated");
@@ -72,10 +71,55 @@ void GimbalPlannerNode::gimbal_planner_callback(const autoaim_interfaces::msg::T
         return;
     }
 
-    double yaw0 = target_msg->yaw;
-    Trajectory traj;
-    
+    Eigen::Matrix<double, 4, HORIZON> pretraj;
+    for (int i = 0; i < HORIZON; i++) {
+        pretraj.col(i) << 
+        target_msg->pretraj[i].yaw, 
+        target_msg->pretraj[i].yaw_vel, 
+        target_msg->pretraj[i].pitch, 
+        target_msg->pretraj[i].pitch_vel;
+    }
+    double yaw0 = target_msg->yaw0;
 
+    // 3. Solve yaw
+    Eigen::VectorXd x0(2);
+    x0 << pretraj(0, 0), pretraj(1, 0);
+    tiny_set_x0(yaw_planner_, x0);
+
+    yaw_planner_->work->Xref = pretraj.block(0, 0, 2, HORIZON);
+    tiny_solve(yaw_planner_);
+
+    // 4. Solve pitch
+    x0 << pretraj(2, 0), pretraj(3, 0);
+    tiny_set_x0(pitch_planner_, x0);
+
+    pitch_planner_->work->Xref = pretraj.block(2, 0, 2, HORIZON);
+    tiny_solve(pitch_planner_);
+
+    autoaim_interfaces::msg::PlannedTarget plan;
+    plan.control = true;
+
+    plan.target_yaw = math::get_rad(pretraj(0, HALF_HORIZON) + yaw0);
+    plan.target_pitch = pretraj(2, HALF_HORIZON);
+
+    plan.yaw = math::get_rad(yaw_planner_->work->x(0, HALF_HORIZON) + yaw0);
+    plan.yaw_vel = yaw_planner_->work->x(1, HALF_HORIZON);
+    plan.yaw_acc = yaw_planner_->work->u(0, HALF_HORIZON);
+
+    plan.pitch = pitch_planner_->work->x(0, HALF_HORIZON);
+    plan.pitch_vel = pitch_planner_->work->x(1, HALF_HORIZON);
+    plan.pitch_acc = pitch_planner_->work->u(0, HALF_HORIZON);
+
+    auto shoot_offset_ = 2;
+    plan.fire =
+        std::hypot(
+        pretraj(0, HALF_HORIZON + shoot_offset_) - yaw_planner_->work->x(0, HALF_HORIZON + shoot_offset_),
+        pretraj(2, HALF_HORIZON + shoot_offset_) -
+            pitch_planner_->work->x(0, HALF_HORIZON + shoot_offset_)) < fire_thresh_;
+    
+    planned_target_msg_ = plan;
+    planned_target_msg_.header.stamp = target_msg->header.stamp;
+    planned_target_pub_->publish(planned_target_msg_);
 }
 
 // Trajectory GimbalPlannerNode::get_trajectory(double yaw0)

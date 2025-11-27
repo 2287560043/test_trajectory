@@ -99,7 +99,7 @@ void OutpostObserver::set_params(void* params)
   params_ = *static_cast<OutpostObserverParams*>(params);
 }
 
-autoaim_interfaces::msg::Target OutpostObserver::predict_target(autoaim_interfaces::msg::Armors armors, double dt)
+autoaim_interfaces::msg::Target OutpostObserver::predict_target(autoaim_interfaces::msg::Armors armors, double dt, double yaw, double bullet_speed)
 {
   dt_ = dt;
   autoaim_interfaces::msg::Target target;

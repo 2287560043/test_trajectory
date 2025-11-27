@@ -62,6 +62,8 @@
 namespace helios_cv
 {
 
+constexpr double SYSTEM_LATENCY_COMPENSATION = 0.05;
+
 using tf2_filter = tf2_ros::MessageFilter<autoaim_interfaces::msg::Armors>;
 using ParamListener = armor_predictor_node::ParamListener;
 using Params = armor_predictor_node::Params;
@@ -115,6 +117,9 @@ private:
   void update_predictor_type(std::shared_ptr<BaseObserver>& vehicle_observer);
 
   uint8_t last_autoaim_mode_ = 0;
+  double yaw_ = 0.0;
+  double bullet_speed_ = 0.0;
+  
   // debug info
   visualization_msgs::msg::Marker position_marker_;
   visualization_msgs::msg::Marker linear_v_marker_;
@@ -125,8 +130,6 @@ private:
   void get_marker_array(autoaim_interfaces::msg::Target target);
   void create_visualization_markers();
   void check_and_kill_invalid(const autoaim_interfaces::msg::Target& target_msg);
-
-  Trajectory get_trajectory(double yaw0, double bullet_speed);
 
   rclcpp::Logger logger_ = rclcpp::get_logger("ArmorPredictorNode");
 };

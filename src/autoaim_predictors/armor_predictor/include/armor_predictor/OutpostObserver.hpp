@@ -37,7 +37,7 @@ class OutpostObserver : public StandardObserver
 public:
   OutpostObserver(const OutpostObserverParams& params);
 
-  autoaim_interfaces::msg::Target predict_target(autoaim_interfaces::msg::Armors armors, double dt) final;
+  autoaim_interfaces::msg::Target predict_target(autoaim_interfaces::msg::Armors armors, double dt, double yaw, double bullet_speed) final;
 
   void reset_kalman() final;
 
