@@ -1,2 +1,0 @@
-Error   2025-11-30 20:50:18:573  DevID:  Source-Line:libMvCameraControl.so(GenTLLoadLibraryEx.cpp-L0222)  ProcessName:hik_camera_node(74839)     Description:[LoadCtiLibInter]Load CTI failed! CTI path[/home/helios/test_trajectory/install/hik_camera/lib/MvProducerVIR.dll], nRet[0x8000000c]
-Error   2025-11-30 20:50:19:577  DevID:  Source-Line:libMvCameraControl.so(GenTLLoadLibraryEx.cpp-L0222)  ProcessName:hik_camera_node(74839)     Description:[LoadCtiLibInter]Load CTI failed! CTI path[/home/helios/test_trajectory/install/hik_camera/lib/MvProducerVIR.dll], nRet[0x8000000c]
