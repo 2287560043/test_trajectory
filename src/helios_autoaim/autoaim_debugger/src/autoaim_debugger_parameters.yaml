@@ -1,0 +1,16 @@
+autoaim_debugger:
+  air_resistance: {
+    type: double,
+    default_value: 0.38,
+    description: "Air resistance coefficient for the projectile motion model."
+  }
+  max_bullet_num: {
+    type: int,
+    default_value: 30,
+    description: "Maximum number of bullets that can be fired in a single frame."
+  }
+  no_hardware: {
+    type: bool,
+    default_value: false,
+    description: "If true, the debugger will not try to connect to the hardware."
+  }

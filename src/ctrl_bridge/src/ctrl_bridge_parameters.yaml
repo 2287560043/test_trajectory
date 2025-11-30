@@ -1,0 +1,24 @@
+ctrl_bridge:
+  serial_name: {
+    type: string,
+    default_value: "/dev/usb_serial"
+  }
+  serial_baudrate: {
+    type: double,
+    default_value: 921600
+  }
+  time_stamp_offset: {
+    type: double,
+    default_value: 0,
+    description: "offset of time from MCU"
+  }
+  left_yaw2pitch_translation: {
+    type: double,
+    default_value: 0.0,
+    description: "offset from pitch to yaw of left gimbal"
+  }
+  right_yaw2pitch_translation: {
+    type: double,
+    default_value: 0.0,
+    description: "offset from pitch to yaw of right gimbal"
+  }

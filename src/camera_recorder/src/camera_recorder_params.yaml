@@ -1,0 +1,14 @@
+camera_recorder:
+  save_path: {
+    type: string,
+    default_value: "/home/helios/Videos"
+  }
+  camera_topic: {
+    type: string,
+    default_value: "/image_raw"
+  }
+  cut_time : {
+    type: int,
+    default_value: 60,
+    description: "seconds"
+  }
