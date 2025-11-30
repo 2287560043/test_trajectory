@@ -9,7 +9,7 @@
 #include "error.hpp"
 
 #include <iostream>
-#include <Eigen/Dense>
+// #include <Eigen/Dense>
 #include <Eigen/Core>
 
 // #include "types.hpp"
