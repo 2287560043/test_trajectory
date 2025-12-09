@@ -240,29 +240,41 @@ Eigen::Matrix<double, 4, HORIZON> StandardObserver::get_trajectory()
 
 std::vector<double> StandardObserver::choose_aim_point(const Eigen::VectorXd& state)
 {
-    // 对于现在的规则，车辆单位只考虑4个装甲板
     int armors_num = 4;
+    
+    double current_yaw_normalized = angles::normalize_angle(state(8));
     double car_center_yaw = math::xyz2ypd(state(0), state(2), state(4))[0];
 
-    double yaw_diff_min = 2 * M_PI;
+    double yaw_diff_min = 1e9;
     double best_armor_yaw = 0.f;
     int best_armor_index = 0;
+
     for (int i = 0; i < armors_num; i++) {
-        double tmp_yaw = state(8) + i * 2.0 * M_PI / armors_num;
-        double temp_yaw_diff = fabs(math::shortest_angular_distance(tmp_yaw, gimbal_yaw_));
+        double tmp_yaw = current_yaw_normalized + i * (2.0 * M_PI / armors_num);
+        tmp_yaw = angles::normalize_angle(tmp_yaw);
+
+        double temp_yaw_diff = fabs(angles::shortest_angular_distance(gimbal_yaw_, tmp_yaw));
         if (temp_yaw_diff < yaw_diff_min) {
             yaw_diff_min = temp_yaw_diff;
             best_armor_yaw = tmp_yaw;
-            best_armor_index = i+1;
+            best_armor_index = i; 
         }
     }
-    double r = best_armor_index%2 ? state(6) : state(7);
+
+    // 偶数(0,2) -> state(6) [r1]
+    // 奇数(1,3) -> state(7) [r2]
+    bool is_even = (best_armor_index % 2 == 0);
+    double r = is_even ? state(6) : state(7);
+
+    // 偶数(0,2) -> state(4) [z1]
+    // 奇数(1,3) -> state(5) [z2]
+    double target_z = is_even ? state(4) : state(5);
+
     std::vector<double> aim_point{
         state(0) - r * std::cos(best_armor_yaw),
         state(2) - r * std::sin(best_armor_yaw),
-        state(4) + (best_armor_index%2 ? 0 : state(5))};
-    
-    // RCLCPP_ERROR(logger_, "best_armor_index: %d, gimbal_yaw: %f, yaw: %f", best_armor_index, gimbal_yaw_, state(8));
+        target_z
+    };
     
     return aim_point;
 }
@@ -279,13 +291,6 @@ autoaim_interfaces::msg::Target StandardObserver::predict_target(autoaim_interfa
   // RCLCPP_ERROR(logger_, "gimbal_yaw: %f, find_state: %s", yaw, TRACKER_STATE_STR[find_state_].c_str());
 
   autoaim_interfaces::msg::PreTrajectory pretraj;
-  // for (int i = 0; i < HORIZON; i++) {
-  //   pretraj.yaw = 0.0;
-  //   pretraj.yaw_vel = 0.0;
-  //   pretraj.pitch = 0.0;
-  //   pretraj.pitch_vel = 0.0;
-  //   target.pretraj.push_back(pretraj);
-  // }
   target.yaw0 = 0.0f;
   bool no_armor = false;
 
@@ -337,6 +342,7 @@ autoaim_interfaces::msg::Target StandardObserver::predict_target(autoaim_interfa
     // Update threshold of temp lost
     params_.max_lost = std::max(static_cast<int>(params_.lost_time_thresh / dt_), 5);
   }
+  RCLCPP_ERROR(logger_, "car_yaw: %f", target_state_(8));
   return target;
 }
 

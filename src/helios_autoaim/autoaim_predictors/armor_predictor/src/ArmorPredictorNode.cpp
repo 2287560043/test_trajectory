@@ -10,6 +10,7 @@
  */
 
 #include "ArmorPredictorNode.hpp"
+#include <rclcpp_lifecycle/state.hpp>
 
 namespace helios_cv
 {
@@ -227,7 +228,8 @@ void ArmorPredictorNode::armor_predictor_callback(autoaim_interfaces::msg::Armor
   }
 
   // doing predict
-  RCLCPP_ERROR(logger_, "gimbal_yaw: %.10f, dt: %.10f", gimbal_yaw_, dt);
+  RCLCPP_INFO(logger_, "gimbal_yaw: %.10f, dt: %.10f", gimbal_yaw_, dt);
+
   target_msg_ = vehicle_observer_->predict_target(*armors_msg, dt, gimbal_yaw_, 28.0);
   target_msg_.gimbal_id = gimbal_id_;
   // choose predict mode

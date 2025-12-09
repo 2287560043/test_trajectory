@@ -83,9 +83,9 @@ void GimbalPlannerNode::gimbal_planner_callback(const autoaim_interfaces::msg::T
     }
     double yaw0 = target_msg->yaw0;
 
-    RCLCPP_ERROR(logger_, "yaw0: %f", yaw0);
-    RCLCPP_ERROR(logger_, "pretraj(HALF_HORIZON, 0): %f", pretraj(0, HALF_HORIZON));
-    RCLCPP_ERROR(logger_, "pretraj(HALF_HORIZON, 1): %f", pretraj(2, HALF_HORIZON));
+    // RCLCPP_ERROR(logger_, "yaw0: %f", yaw0);
+    // RCLCPP_ERROR(logger_, "pretraj(HALF_HORIZON, 0): %f", pretraj(0, HALF_HORIZON));
+    // RCLCPP_ERROR(logger_, "pretraj(HALF_HORIZON, 1): %f", pretraj(2, HALF_HORIZON));
 
     if (!yaw_planner_ || !yaw_planner_->work || !pitch_planner_ || !pitch_planner_->work) {
         RCLCPP_ERROR(logger_, "CRITICAL: Planner pointers are invalid. Skipping solve.");
@@ -129,8 +129,8 @@ void GimbalPlannerNode::gimbal_planner_callback(const autoaim_interfaces::msg::T
     planned_target_msg_ = plan;
     planned_target_msg_.header.stamp = target_msg->header.stamp;
     planned_target_pub_->publish(planned_target_msg_);
-    RCLCPP_ERROR(logger_, "send_to_mcu---yaw: %f, yaw_vel: %f, fire: %s", 
-                                    plan.yaw, plan.yaw_vel, plan.fire ? "true" : "false");
+    // RCLCPP_ERROR(logger_, "send_to_mcu---yaw: %f, yaw_vel: %f, fire: %s", 
+    //                                 plan.yaw, plan.yaw_vel, plan.fire ? "true" : "false");
 }
 
 void GimbalPlannerNode::setup_yaw_planner() {
