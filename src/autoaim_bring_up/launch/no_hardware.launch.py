@@ -59,15 +59,31 @@ def generate_launch_description():
         )
     else:
         camera_node = Node(
-        package='mindvision_camera',
-        executable='mindvision_camera_node',
-        name='mv_camera',
-        output='both',
-        emulate_tty=True,
-        on_exit=Shutdown(),
+            package='mindvision_camera',
+            executable='mindvision_camera_node',
+            name='mv_camera',
+            output='both',
+            emulate_tty=True,
+            on_exit=Shutdown(),
+            parameters=[node_params],
+    )
+    
+    imu_talker = Node(
+        package='hipnuc_imu',
+        executable='talker',
+        name='IMU_publisher',
         parameters=[node_params],
+        output='screen',
+        on_exit=Shutdown(),
     )
 
+    imu_listener = Node(
+        package='hipnuc_imu',
+        executable='listener',
+        name='IMU_listener',
+        output='screen',
+        on_exit=Shutdown(),
+    )
 
     armor_tracker_node = Node(
         package='armor_predictor',
@@ -98,7 +114,7 @@ def generate_launch_description():
     gimbal_planner_node = Node(
         package='gimbal_planner',
         executable='gimbal_planner_node',
-        name='gimbal_planner_node',
+        name='gimbal_planner',
         output='screen',
         parameters=[node_params],
         arguments=['--ros-args', '--log-level', 'gimbal_planner_node:='+launch_params['gimbal_planner_log_level']],
@@ -172,18 +188,19 @@ def generate_launch_description():
         name='autoaim_priority',
         output='both',
     )
-
     return LaunchDescription([
         robot_state_publisher,
-        camera_node,
+        # camera_node,
+        imu_talker,
+        imu_listener,
         detector_node,
-        # armor_tracker_node,
-        energy_tracker_node,
-        least_squares_node,
+        armor_tracker_node,
+        # energy_tracker_node,
+        # least_squares_node,
         gimbal_planner_node,
-        node_tf2_yaw,
-        node_tf2_pitch,
-        # autoaim_debugger,
+        # node_tf2_yaw,
+        # node_tf2_pitch,
+        # autoaim_debugge,
         # camera_recorder,
         # foxglove_bridge,
         # priority_client,

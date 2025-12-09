@@ -9,6 +9,7 @@
 #include "gimbal_planner/gimbal_planner_node_parameters.hpp"
 #include <message_filters/subscriber.h>
 #include <tf2_ros/create_timer_ros.h>
+#include <rclcpp/qos.hpp>
 
 // opencv
 #include <opencv2/core.hpp>
@@ -44,11 +45,6 @@ using tf2_filter = tf2_ros::MessageFilter<autoaim_interfaces::msg::Target>;
 // constexpr int HALF_HORIZON = 50;
 // constexpr int HORIZON = HALF_HORIZON * 2;
 
-class Planner
-{
-    
-};
-
 class GimbalPlannerNode : public rclcpp::Node
 {
 public:
@@ -64,7 +60,7 @@ private:
 
     autoaim_interfaces::msg::PlannedTarget planned_target_msg_;
     rclcpp::Publisher<autoaim_interfaces::msg::PlannedTarget>::SharedPtr planned_target_pub_;
-    message_filters::Subscriber<autoaim_interfaces::msg::Target> target_sub_;
+    rclcpp::Subscription<autoaim_interfaces::msg::Target>::SharedPtr target_sub_;
 
     // tf2
     std::shared_ptr<tf2_ros::Buffer> tf2_buffer_;
@@ -88,7 +84,7 @@ private:
     rclcpp::Logger logger_ = rclcpp::get_logger("GimbalPlannerNode");
 
     // time
-    double time_planner_start_;
+    double time_planner_start_ = 0.0;
 
     // planners
     TinySolver* yaw_planner_;

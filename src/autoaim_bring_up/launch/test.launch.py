@@ -124,22 +124,6 @@ def generate_launch_description():
         on_exit=Shutdown(),
         parameters=[node_params],
     )
-    imu_talker = Node(
-        package='hipnuc_imu',
-        executable='talker',
-        name='IMU_publisher',
-        parameters=[node_params],
-        output='screen',
-        on_exit=Shutdown(),
-    )
-
-    imu_listener = Node(
-        package='hipnuc_imu',
-        executable='listener',
-        name='IMU_listener',
-        output='screen',
-        on_exit=Shutdown(),
-    )
     if not IS_GDB:  
         detector_node = Node(
             package='detector_node',
@@ -242,34 +226,52 @@ def generate_launch_description():
         output='both',
         emulate_tty=True,
     )
-    latency_monitor_node = Node(
-        package='autoaim_bring_up',  # 或新建test_tools包
-        executable='latency_monitor_node',
-        name='latency_monitor',
-        output='both',
+    imu_talker = Node(
+        package='hipnuc_imu',
+        executable='talker',
+        name='IMU_publisher',
+        parameters=[node_params],
+        output='screen',
+        on_exit=Shutdown(),
+    )
+
+    imu_listener = Node(
+        package='hipnuc_imu',
+        executable='listener',
+        name='IMU_listener',
+        output='screen',
+        on_exit=Shutdown(),
+    )
+    
+    gimbal_planner_node = Node(
+        package='gimbal_planner',
+        executable='gimbal_planner_node',
+        name='gimbal_planner',
+        output='screen',
+        parameters=[node_params],
+        arguments=['--ros-args', '--log-level', 'gimbal_planner_node:='+launch_params['gimbal_planner_log_level']],
         emulate_tty=True,
-        parameters=[{
-            'topics_to_monitor': [
-                '/image_raw',           # 相机输出
-                '/detector/armors',     # 检测器输出
-                '/tracker/target',      # 跟踪器输出
-            ],
-            'log_file': '/tmp/autoaim_latency.csv',
-        }],
+    )
+
+    delay_gimbal_planner_node = TimerAction(
+        period=3.0,
+        actions=[gimbal_planner_node],
     )
     return LaunchDescription([
         robot_state_publisher,
-        #cam_detector,
+        imu_talker,
+        delay_ctrl_bridge_node,
+        # imu_listener,
+        # cam_detector,
         # delay_autoaim_bridge_node,
         delay_camera_node,
         detector_node,
-        delay_ctrl_bridge_node,
         # autoaim_debugger,
         delay_armor_tracker_node,
-        delay_energy_tracker_node,
+        delay_gimbal_planner_node,
+        # delay_energy_tracker_node,
         # node_tf2,
         # camera_recorder,
         # foxglove_bridge,
-        latency_monitor_node
     ])
 

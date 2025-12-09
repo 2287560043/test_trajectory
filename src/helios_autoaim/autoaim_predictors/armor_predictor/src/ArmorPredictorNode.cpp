@@ -63,9 +63,6 @@ ArmorPredictorNode::ArmorPredictorNode(const rclcpp::NodeOptions& options) : rcl
         rclcpp::Parameter param("autoaim_mode", mcu_packet->autoaim_mode);
         last_autoaim_mode_ = mcu_packet->autoaim_mode;
         this->set_parameter(param);
-
-        yaw_ = mcu_packet->yaw;
-        bullet_speed_ = mcu_packet->bullet_speed;
       }
     }
   );
@@ -142,6 +139,42 @@ void ArmorPredictorNode::create_visualization_markers()
 
 void ArmorPredictorNode::armor_predictor_callback(autoaim_interfaces::msg::Armors::SharedPtr armors_msg)
 {
+  geometry_msgs::msg::TransformStamped ts_odom2cam, ts_cam2odom;
+  try {
+      ts_odom2cam = tf2_buffer_->lookupTransform(
+          frame_namespace_ + "camera_optical_frame",
+          frame_namespace_ + "odoom",
+          armors_msg->header.stamp,
+          rclcpp::Duration::from_seconds(0.02)
+      );
+      ts_cam2odom = tf2_buffer_->lookupTransform(
+          frame_namespace_ + "odoom",
+          frame_namespace_ + "camera_optical_frame",
+          armors_msg->header.stamp,
+          rclcpp::Duration::from_seconds(0.02)
+      );
+      auto odom2yawlink = tf2_buffer_->lookupTransform(
+          frame_namespace_ + "yaw_link",
+          frame_namespace_ + "odoom",
+          armors_msg->header.stamp,
+          rclcpp::Duration::from_seconds(0.02)
+      );
+      tf2::Quaternion q(
+          odom2yawlink.transform.rotation.x,
+          odom2yawlink.transform.rotation.y,
+          odom2yawlink.transform.rotation.z,
+          odom2yawlink.transform.rotation.w
+      );
+      tf2::Matrix3x3 m(q);
+      // blank roll and pitch, not using them
+      double roll, pitch, yaw;
+      m.getRPY(roll, pitch, yaw);
+      gimbal_yaw_ = yaw;
+  } catch (const tf2::TransformException& ex) {
+      RCLCPP_ERROR_ONCE(get_logger(), "Error while transforming %s", ex.what());
+      return;
+  }
+  
   if (param_listener_->is_old(params_))
   {
     params_ = param_listener_->get_params();
@@ -156,6 +189,9 @@ void ArmorPredictorNode::armor_predictor_callback(autoaim_interfaces::msg::Armor
 
   // dt = predict_time + 下位机耗时 + detect_time ????
   double dt = time.seconds() - time_predictor_start_;
+  if (dt > 1.0) {
+    dt = 0.01;
+  }
   time_predictor_start_ = time.seconds();
 
   if (dt < 0) {
@@ -191,12 +227,14 @@ void ArmorPredictorNode::armor_predictor_callback(autoaim_interfaces::msg::Armor
   }
 
   // doing predict
-  target_msg_ = vehicle_observer_->predict_target(*armors_msg, dt, yaw_, bullet_speed_);
+  RCLCPP_ERROR(logger_, "gimbal_yaw: %.10f, dt: %.10f", gimbal_yaw_, dt);
+  target_msg_ = vehicle_observer_->predict_target(*armors_msg, dt, gimbal_yaw_, 28.0);
   target_msg_.gimbal_id = gimbal_id_;
   // choose predict mode
   update_predictor_type(vehicle_observer_);
   Eigen::Vector3d target_position =
       Eigen::Vector3d{ target_msg_.position.x, target_msg_.position.y, target_msg_.position.z };
+  target_msg_.tracking = 1;
   if (target_msg_.tracking)
   {
     last_target_distance_ = target_position.norm();
@@ -290,6 +328,7 @@ void ArmorPredictorNode::get_marker_array(autoaim_interfaces::msg::Target target
   }
   else
   {
+    RCLCPP_WARN(logger_, "Target is not tracking");
     position_marker_.action = visualization_msgs::msg::Marker::DELETE;
     linear_v_marker_.action = visualization_msgs::msg::Marker::DELETE;
     angular_v_marker_.action = visualization_msgs::msg::Marker::DELETE;

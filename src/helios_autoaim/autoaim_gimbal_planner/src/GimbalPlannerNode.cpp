@@ -1,9 +1,13 @@
 #include "autoaim_gimbal_planner/GimbalPlannerNode.hpp"
+#include <autoaim_interfaces/msg/detail/planned_target__struct.hpp>
 
 namespace helios_cv {
 
 GimbalPlannerNode::GimbalPlannerNode(const rclcpp::NodeOptions & options) 
-: Node("gimbal_trajectory_node", options)
+: Node("gimbal_trajectory_node", options),
+  yaw_planner_(nullptr),
+  pitch_planner_(nullptr),
+  time_planner_start_(0.0)
 {
     param_listener_ = std::make_shared<ParamListener>(this->get_node_parameters_interface());
     params_ = param_listener_->get_params();
@@ -14,29 +18,42 @@ GimbalPlannerNode::GimbalPlannerNode(const rclcpp::NodeOptions & options)
     decision_speed_ = params_.decision_speed;
     high_speed_delay_time_ = params_.high_speed_delay_time;
     low_speed_delay_time_ = params_.low_speed_delay_time;
+
     
     setup_yaw_planner();
     setup_pitch_planner();
 
-    tf2_buffer_ = std::make_shared<tf2_ros::Buffer>(this->get_clock());
-    auto timer_interface = 
-        std::make_shared<tf2_ros::CreateTimerROS>(this->get_node_base_interface(), this->get_node_timers_interface());
+    target_sub_ = this->create_subscription<autoaim_interfaces::msg::Target>(
+        "/predictor/target", rclcpp::SensorDataQoS(),
+        std::bind(&GimbalPlannerNode::gimbal_planner_callback, this, std::placeholders::_1));
+    planned_target_pub_ = this->create_publisher<autoaim_interfaces::msg::PlannedTarget>(
+            "/gimbal_planner/planned_target", rclcpp::SensorDataQoS());
+
+    // tf2_buffer_ = std::make_shared<tf2_ros::Buffer>(this->get_clock());
+    // auto timer_interface = 
+    //     std::make_shared<tf2_ros::CreateTimerROS>(this->get_node_base_interface(), this->get_node_timers_interface());
     
-    tf2_buffer_->setCreateTimerInterface(timer_interface);
-    tf2_listener_ = std::make_shared<tf2_ros::TransformListener>(*tf2_buffer_);
-    target_sub_.subscribe(this, "/predictor/target", rmw_qos_profile_sensor_data);
-    tf2_filter_ = std::make_shared<tf2_filter>(target_sub_, *tf2_buffer_, "odoom", 10,
-                                             this->get_node_logging_interface(), this->get_node_clock_interface(),
-                                             std::chrono::duration<int>(2));
-    tf2_filter_->registerCallback(&GimbalPlannerNode::gimbal_planner_callback, this);
+    // tf2_buffer_->setCreateTimerInterface(timer_interface);
+    // tf2_listener_ = std::make_shared<tf2_ros::TransformListener>(*tf2_buffer_);
+    // target_sub_.subscribe(this, "/predictor/target", rmw_qos_profile_sensor_data);
+    // tf2_filter_ = std::make_shared<tf2_filter>(target_sub_, *tf2_buffer_, "odoom", 10,
+    //                                          this->get_node_logging_interface(), this->get_node_clock_interface(),
+    //                                          std::chrono::duration<int>(2));
+    // tf2_filter_->registerCallback(&GimbalPlannerNode::gimbal_planner_callback, this);
 }
 
 GimbalPlannerNode::~GimbalPlannerNode()
 {
     RCLCPP_INFO(logger_, "GimbalPlannerNode destroyed");
 }
-void GimbalPlannerNode::gimbal_planner_callback(const autoaim_interfaces::msg::Target::SharedPtr target_msg) {
-
+void GimbalPlannerNode::gimbal_planner_callback(const autoaim_interfaces::msg::Target::SharedPtr target_msg) 
+{
+    // for (int i = 0; i < HORIZON; i++) {
+    //     RCLCPP_ERROR(logger_, "yaw: %f, yaw_vel: %f, pitch: %f, pitch_vel: %f", 
+    //         target_msg->pretraj[i].yaw, target_msg->pretraj[i].yaw_vel, 
+    //         target_msg->pretraj[i].pitch, target_msg->pretraj[i].pitch_vel);
+    // }
+    
     if (param_listener_->is_old(params_)) {
         params_ = param_listener_->get_params();
         RCLCPP_WARN(logger_, "params updated");
@@ -49,15 +66,31 @@ void GimbalPlannerNode::gimbal_planner_callback(const autoaim_interfaces::msg::T
     if (dt < 0) return;
 
     Eigen::Matrix<double, 4, HORIZON> pretraj;
+    if (target_msg->pretraj.size() != HORIZON) {
+        RCLCPP_ERROR(logger_, "pretraj size not equal to HORIZON: %ld", target_msg->pretraj.size());
+        return;
+    }
     for (int i = 0; i < HORIZON; i++) {
+        // RCLCPP_ERROR(logger_, "yaw: %f, yaw_vel: %f, pitch: %f, pitch_vel: %f", 
+        //     target_msg->pretraj[i].yaw, target_msg->pretraj[i].yaw_vel, 
+        //     target_msg->pretraj[i].pitch, target_msg->pretraj[i].pitch_vel);
         pretraj.col(i) << 
         target_msg->pretraj[i].yaw, 
         target_msg->pretraj[i].yaw_vel, 
         target_msg->pretraj[i].pitch, 
         target_msg->pretraj[i].pitch_vel;
+        
     }
     double yaw0 = target_msg->yaw0;
 
+    RCLCPP_ERROR(logger_, "yaw0: %f", yaw0);
+    RCLCPP_ERROR(logger_, "pretraj(HALF_HORIZON, 0): %f", pretraj(0, HALF_HORIZON));
+    RCLCPP_ERROR(logger_, "pretraj(HALF_HORIZON, 1): %f", pretraj(2, HALF_HORIZON));
+
+    if (!yaw_planner_ || !yaw_planner_->work || !pitch_planner_ || !pitch_planner_->work) {
+        RCLCPP_ERROR(logger_, "CRITICAL: Planner pointers are invalid. Skipping solve.");
+        return; 
+    }
     // solve yaw and pitch
     Eigen::VectorXd x0(2);
     x0 << pretraj(0, 0), pretraj(1, 0);
@@ -85,15 +118,19 @@ void GimbalPlannerNode::gimbal_planner_callback(const autoaim_interfaces::msg::T
     plan.pitch_vel = pitch_planner_->work->x(1, HALF_HORIZON);
     plan.pitch_acc = pitch_planner_->work->u(0, HALF_HORIZON);
 
+
     auto shoot_offset_ = 2;
-    plan.fire = std::hypot( pretraj(0, HALF_HORIZON + shoot_offset_) - 
-                                yaw_planner_->work->x(0, HALF_HORIZON + shoot_offset_),
-                            pretraj(2, HALF_HORIZON + shoot_offset_) -
-                                pitch_planner_->work->x(0, HALF_HORIZON + shoot_offset_)) < fire_thresh_;
-               
+    plan.fire = std::hypot( 
+                    pretraj(0, HALF_HORIZON + shoot_offset_) - 
+                        yaw_planner_->work->x(0, HALF_HORIZON + shoot_offset_),
+                    pretraj(2, HALF_HORIZON + shoot_offset_) - 
+                        pitch_planner_->work->x(0, HALF_HORIZON + shoot_offset_)) < fire_thresh_;
+    
     planned_target_msg_ = plan;
     planned_target_msg_.header.stamp = target_msg->header.stamp;
     planned_target_pub_->publish(planned_target_msg_);
+    RCLCPP_ERROR(logger_, "send_to_mcu---yaw: %f, yaw_vel: %f, fire: %s", 
+                                    plan.yaw, plan.yaw_vel, plan.fire ? "true" : "false");
 }
 
 void GimbalPlannerNode::setup_yaw_planner() {
@@ -107,7 +144,9 @@ void GimbalPlannerNode::setup_yaw_planner() {
     Eigen::Matrix<double, 2, 1> Q(Q_yaw.data());
     Eigen::Matrix<double, 1, 1> R(R_yaw.data());
 
+
     tiny_setup(&yaw_planner_, A, B, f, Q.asDiagonal(), R.asDiagonal(), 1.0, 2, 1, HORIZON, 0);
+
 
     Eigen::MatrixXd x_min = Eigen::MatrixXd::Constant(2, HORIZON, -1e17);
     Eigen::MatrixXd x_max = Eigen::MatrixXd::Constant(2, HORIZON, 1e17);

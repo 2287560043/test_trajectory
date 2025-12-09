@@ -88,7 +88,7 @@ autoaim_interfaces::msg::Armors ArmorEnergyDetectStream::detect(
             temp_armor.distance_to_image_center =
                 pnp_solver->calculateDistanceToCenter(armor.center);
             double area = armor.getArea();
-            RCLCPP_INFO(logger_,"armor area: %f",area);
+            // RCLCPP_INFO(logger_,"armor area: %f",area);
             armors_msg.armors.push_back(temp_armor);
         } else {
             RCLCPP_WARN(logger_, "solve pose failed for armor");

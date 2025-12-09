@@ -7,7 +7,7 @@
 /mv_camera:
   ros__parameters:
     camera_info_url: package://mindvision_camera/config/camera_info.yaml
-    exposure_time: 5000
+    exposure_time: 7000
     gamma: 100
     rgb_gain.r: 100
     rgb_gain.g: 100
@@ -95,7 +95,7 @@
       sigma_r_v: 5.0
     max_lost: 20
     max_detect: 5
-/gimbal_planner_node:
+/gimbal_planner:
   ros__parameters:
     autoaim_mode: 0
     max_yaw_acc: 50.0
@@ -116,3 +116,9 @@
     low_speed_delay_time: 0.015
     pitch_offset: -1.4
     yaw_offset: -1.0
+/IMU_publisher:
+  ros__parameters:
+    serial_port: "/dev/ttyACM0"
+    baud_rate: 921600
+    frame_id: "base_link"
+    imu_topic: "/IMU_data"

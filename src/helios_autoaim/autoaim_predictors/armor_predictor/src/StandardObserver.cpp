@@ -5,6 +5,8 @@
 // https://swjtuhelios.feishu.cn/docx/MfCsdfRxkoYk3oxWaazcfUpTnih?from=from_copylink
 #include "StandardObserver.hpp"
 #include "BaseObserver.hpp"
+#include <autoaim_interfaces/msg/detail/pre_trajectory__struct.hpp>
+#include <autoaim_utilities/BulletTrajectory.hpp>
 
 namespace helios_cv
 {
@@ -18,27 +20,28 @@ StandardObserver::StandardObserver(const StandardObserverParams& params) : param
 
 ExtendedKalmanFilter StandardObserver::set_ekf(double dt)
 {
-  auto f = [&](const Eigen::VectorXd& x) {
+  fixed_dt_ = dt;
+  auto f = [&, this](const Eigen::VectorXd& x) {
     Eigen::VectorXd x_new = x;
-    x_new(0) += x(1) * dt;
-    x_new(2) += x(3) * dt;
-    x_new(8) += x(9) * dt;
+    x_new(0) += x(1) * fixed_dt_;
+    x_new(2) += x(3) * fixed_dt_;
+    x_new(8) += x(9) * fixed_dt_;
     return x_new;
   };
-  auto j_f = [&](const Eigen::VectorXd&) {
+  auto j_f = [&, this](const Eigen::VectorXd&) {
     Eigen::MatrixXd f(10, 10);
     // clang-format off
-        //     xc vxc   yc vyc   z1 z2 r1 r2 yaw vyaw
-        f <<   1, dt,   0, 0,    0, 0, 0, 0, 0, 0,
-               0, 1,    0, 0,    0, 0, 0, 0, 0, 0,
-               0, 0,    1, dt,   0, 0, 0, 0, 0, 0,
-               0, 0,    0, 1,    0, 0, 0, 0, 0, 0,
-               0, 0,    0, 0,    1, 0, 0, 0, 0, 0,
-               0, 0,    0, 0,    0, 1, 0, 0, 0, 0,
-               0, 0,    0, 0,    0, 0, 1, 0, 0, 0,
-               0, 0,    0, 0,    0, 0, 0, 1, 0, 0,
-               0, 0,    0, 0,    0, 0, 0, 0, 1, dt,
-               0, 0,    0, 0,    0, 0, 0, 0, 0, 1;
+        //     xc vxc          yc vyc          z1 z2 r1 r2 yaw vyaw
+        f <<   1, fixed_dt_,   0, 0,           0, 0, 0, 0, 0, 0,
+               0, 1,           0, 0,           0, 0, 0, 0, 0, 0,
+               0, 0,           1, fixed_dt_,   0, 0, 0, 0, 0, 0,
+               0, 0,           0, 1,           0, 0, 0, 0, 0, 0,
+               0, 0,           0, 0,           1, 0, 0, 0, 0, 0,
+               0, 0,           0, 0,           0, 1, 0, 0, 0, 0,
+               0, 0,           0, 0,           0, 0, 1, 0, 0, 0,
+               0, 0,           0, 0,           0, 0, 0, 1, 0, 0,
+               0, 0,           0, 0,           0, 0, 0, 0, 1, fixed_dt_,
+               0, 0,           0, 0,           0, 0, 0, 0, 0, 1;
     // clang-format on
     return f;
   };
@@ -195,7 +198,10 @@ Eigen::Matrix<double, 4, HORIZON> StandardObserver::get_trajectory()
 
     auto getYP = [&](const Eigen::VectorXd& st) -> std::pair<double, double> {
         tmp_traj.set(choose_aim_point(st), bullet_speed_);
-        if (!tmp_traj.solvable()) throw std::runtime_error("Unsolvable bullet trajectory!");
+        // if (!tmp_traj.solvable()) throw std::runtime_error("Unsolvable bullet trajectory!");
+        if (!tmp_traj.solvable()) {
+            RCLCPP_ERROR(logger_, "Unsolvable bullet trajectory!, yaw: %f, pitch: %f", tmp_traj.yaw(), tmp_traj.pitch());
+        }
         return {tmp_traj.yaw(), tmp_traj.pitch()};
     };
 
@@ -221,7 +227,9 @@ Eigen::Matrix<double, 4, HORIZON> StandardObserver::get_trajectory()
         double yaw_vel = (yaw_pitch_next.first - yaw_pitch_last.first) / (2.0 * DT);
         double pitch_vel = (yaw_pitch_next.second - yaw_pitch_last.second) / (2.0 * DT);
         
-        pretraj_matrix << yaw_pitch.first - yaw0, yaw_vel, yaw_pitch.second, pitch_vel;
+        pretraj_matrix.col(i) << yaw_pitch.first - yaw0, yaw_vel, yaw_pitch.second, pitch_vel;
+        // RCLCPP_INFO(logger_, "---yaw: %f, yaw_vel: %f, pitch: %f, pitch_vel: %f", 
+        //     yaw_pitch.first - yaw0, yaw_vel, yaw_pitch.second, pitch_vel);
 
         yaw_pitch_last = yaw_pitch;
         yaw_pitch = yaw_pitch_next;
@@ -236,12 +244,12 @@ std::vector<double> StandardObserver::choose_aim_point(const Eigen::VectorXd& st
     int armors_num = 4;
     double car_center_yaw = math::xyz2ypd(state(0), state(2), state(4))[0];
 
-    double yaw_diff_min = 90.0f;
+    double yaw_diff_min = 2 * M_PI;
     double best_armor_yaw = 0.f;
     int best_armor_index = 0;
     for (int i = 0; i < armors_num; i++) {
         double tmp_yaw = state(8) + i * 2.0 * M_PI / armors_num;
-        double temp_yaw_diff = fabs(math::shortest_angular_distance(car_center_yaw, gimbal_yaw_));
+        double temp_yaw_diff = fabs(math::shortest_angular_distance(tmp_yaw, gimbal_yaw_));
         if (temp_yaw_diff < yaw_diff_min) {
             yaw_diff_min = temp_yaw_diff;
             best_armor_yaw = tmp_yaw;
@@ -254,6 +262,8 @@ std::vector<double> StandardObserver::choose_aim_point(const Eigen::VectorXd& st
         state(2) - r * std::sin(best_armor_yaw),
         state(4) + (best_armor_index%2 ? 0 : state(5))};
     
+    // RCLCPP_ERROR(logger_, "best_armor_index: %d, gimbal_yaw: %f, yaw: %f", best_armor_index, gimbal_yaw_, state(8));
+    
     return aim_point;
 }
 
@@ -265,6 +275,19 @@ autoaim_interfaces::msg::Target StandardObserver::predict_target(autoaim_interfa
   target.header.stamp = armors.header.stamp;
   gimbal_yaw_ = yaw;
   bullet_speed_ = bullet_speed;
+
+  // RCLCPP_ERROR(logger_, "gimbal_yaw: %f, find_state: %s", yaw, TRACKER_STATE_STR[find_state_].c_str());
+
+  autoaim_interfaces::msg::PreTrajectory pretraj;
+  // for (int i = 0; i < HORIZON; i++) {
+  //   pretraj.yaw = 0.0;
+  //   pretraj.yaw_vel = 0.0;
+  //   pretraj.pitch = 0.0;
+  //   pretraj.pitch_vel = 0.0;
+  //   target.pretraj.push_back(pretraj);
+  // }
+  target.yaw0 = 0.0f;
+  bool no_armor = false;
 
   if (find_state_ == LOST) {
     target.tracking = false;
@@ -280,6 +303,8 @@ autoaim_interfaces::msg::Target StandardObserver::predict_target(autoaim_interfa
       tracking_armor_ = armors.armors[0];
     } else {
       find_state_ = LOST;
+      RCLCPP_ERROR(logger_, "no priority armor found");
+      no_armor = true;
       return target;
     }
 
@@ -292,13 +317,17 @@ autoaim_interfaces::msg::Target StandardObserver::predict_target(autoaim_interfa
     // get observation
     track_armor(armors);
     if (find_state_ == TRACKING || find_state_ == TEMP_LOST) {
+      target.position.x = choose_aim_point(target_state_)[0];
+      target.position.y = choose_aim_point(target_state_)[1];
+      target.position.z = choose_aim_point(target_state_)[2]; 
       // 获得基于当前时刻的理想轨迹
       Eigen::Matrix<double, 4, HORIZON> pretraj_matrix = get_trajectory();
       for(int i = 0; i < HORIZON; i++) {
-        target.pretraj[i].yaw = pretraj_matrix(i, 0);
-        target.pretraj[i].yaw_vel = pretraj_matrix(i, 1);
-        target.pretraj[i].pitch = pretraj_matrix(i, 2);
-        target.pretraj[i].pitch_vel = pretraj_matrix(i, 3);
+        pretraj.yaw = pretraj_matrix.col(i)(0);
+        pretraj.yaw_vel = pretraj_matrix.col(i)(1);
+        pretraj.pitch = pretraj_matrix.col(i)(2);
+        pretraj.pitch_vel = pretraj_matrix.col(i)(3);
+        target.pretraj.push_back(pretraj);
       }
       target.yaw0 = yaw0_;
     } else {

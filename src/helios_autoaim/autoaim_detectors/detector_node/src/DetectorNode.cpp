@@ -253,6 +253,7 @@ void DetectorNode::armor_image_callback(sensor_msgs::msg::Image::SharedPtr image
         RCLCPP_ERROR_ONCE(get_logger(), "Error while transforming %s", ex.what());
         return;
     }
+    
     // detect
     {
         std::unique_lock<std::mutex> lock(detector_mutex_);

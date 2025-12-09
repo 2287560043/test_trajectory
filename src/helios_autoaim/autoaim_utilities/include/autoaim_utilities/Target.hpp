@@ -20,6 +20,8 @@ typedef enum
   DETECTING
 } TrakerState;
 
+const std::vector<std::string> TRACKER_STATE_STR = {"LOST", "TEMP_LOST", "TRACKING", "DETECTING"};
+
 enum AUTOAIM_MODE
 {
   AUTOAIM = 0,

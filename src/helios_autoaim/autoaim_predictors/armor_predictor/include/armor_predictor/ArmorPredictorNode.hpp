@@ -22,6 +22,8 @@
 // interfaces
 #include <visualization_msgs/msg/marker_array.hpp>
 #include "autoaim_interfaces/msg/receive_data.hpp"
+#include <sensor_msgs/msg/detail/imu__struct.hpp>
+#include <sensor_msgs/msg/imu.hpp>
 
 // custom
 #include "armor_predictor/BaseObserver.hpp"
@@ -92,6 +94,7 @@ private:
   uint8_t last_autoaim_mode_ = 0;
   double yaw_ = 0.0;
   double bullet_speed_ = 0.0;
+  double gimbal_yaw_ = 0.0;
   
   // debug info
   visualization_msgs::msg::Marker position_marker_;
