@@ -68,11 +68,11 @@
     priority_sequence: ["1", "guard", "2", "3", "4", "5"]
     standard_observer:
       ekf:
-        sigma2_q_xyz: 50.0
+        sigma2_q_xyz: 300.0
         sigma2_q_yaw: 50.0
-        sigma2_q_r: 800.0
-        r_xyz_factor: 0.05
-        r_yaw: 0.01
+        sigma2_q_r: 2000.0
+        r_xyz_factor: 0.01
+        r_yaw: 0.05
     outpost_observer:
       ekf:
         sigma2_q_xyz: 0.05
@@ -81,7 +81,7 @@
         r_yaw: 0.01
     max_lost: 5.0
     max_detect: 5.0
-    lost_time_thres_: 0.3
+    lost_time_thres_: 0.15
 /energy_predictor:
   ros__parameters:
     debug: true

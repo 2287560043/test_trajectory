@@ -65,7 +65,8 @@ protected:
   Eigen::Matrix<double, 4, HORIZON> get_trajectory();
 
   // 基于当前状态, 选择最合适的装甲板，返回装甲板的xyz坐标(四个标准位置选一个)
-  std::vector<double> choose_aim_point(const Eigen::VectorXd& state);
+  // std::vector<double> choose_aim_point(const Eigen::VectorXd& state);
+  std::vector<double> choose_aim_point(const Eigen::VectorXd& state, bool is_spinning_mode = false);
 
 
   // kalman utilities
