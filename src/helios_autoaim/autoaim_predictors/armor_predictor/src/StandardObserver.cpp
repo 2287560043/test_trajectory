@@ -10,8 +10,8 @@
 
 namespace helios_cv
 {
-const double STATIC_YAW_VEL_THRESH = 0.02;  // rad/s，低于此速度认为静止
-const double SPINNING_YAW_VEL_THRESH = 0.5; // rad/s，高于此速度认为在小陀螺 (约85度/秒)
+const double STATIC_YAW_VEL_THRESH = 0.008;  // rad/s
+const double TOP_YAW_VEL_THRESH = 0.5; // rad/s
 
 StandardObserver::StandardObserver(const StandardObserverParams& params) : params_(params)
 {
@@ -244,13 +244,10 @@ Eigen::Matrix<double, 4, HORIZON> StandardObserver::get_trajectory()
 {
     Eigen::Matrix<double, 4, HORIZON> pretraj_matrix;
     pretraj_matrix.setZero();
-    
-    // 获取当前完整状态
     Eigen::VectorXd state = target_state_; 
     
-    // 判断运动模式
     double yaw_vel = std::abs(state(9));
-    bool is_spinning = yaw_vel > SPINNING_YAW_VEL_THRESH;
+    bool is_spinning = yaw_vel > TOP_YAW_VEL_THRESH;
     bool is_static = yaw_vel < STATIC_YAW_VEL_THRESH;
 
     auto getName = [](bool is_spinning, bool is_static) -> std::string {
@@ -258,22 +255,21 @@ Eigen::Matrix<double, 4, HORIZON> StandardObserver::get_trajectory()
         if (is_static) return "static";
         return "nomoral";
     };
-    RCLCPP_INFO(logger_, "yaw_vel: %f", yaw_vel);
-    RCLCPP_INFO(logger_, "current mode: %s", getName(is_spinning, is_static).c_str());
+    RCLCPP_INFO(logger_, "yaw_vel: %f, current mode: %s", yaw_vel, getName(is_spinning, is_static).c_str());
 
-    // 如果是静止，强制将预测用的角速度置零，防止准心漂移
+    // 静止模式下防止准心漂移
     if (is_static) {
         state(9) = 0.0;
     }
 
-    // 弹道解算 Lambda
     Trajectory tmp_traj;
     auto getYP = [&](const Eigen::VectorXd& st) -> std::pair<double, double> {
         // choose_aim_point 内部逻辑已经修改，会根据 is_spinning 决定选点策略
         tmp_traj.set(choose_aim_point(st, is_spinning), bullet_speed_);
         if (!tmp_traj.solvable()) {
-            // Log 频率限制建议在实际部署时加上
             // RCLCPP_ERROR(logger_, "Unsolvable trajectory!");
+            // 应该是返回上一次的结果
+            return {0.0, 0.0};
         }
         return {tmp_traj.yaw(), tmp_traj.pitch()};
     };
@@ -283,31 +279,22 @@ Eigen::Matrix<double, 4, HORIZON> StandardObserver::get_trajectory()
     // 计算当前时刻的基准 Yaw/Pitch
     const double yaw0 = getYP(state).first;
     yaw0_ = yaw0;
-
-    // 准备预测
-    // 注意：如果是小陀螺模式，我们需要“骗”轨迹生成器
-    // 我们希望云台平滑跟随车体中心，而不是跟随旋转的装甲板画圆
-    // 因此在预测循环中，保持 state(9) (v_yaw) 生效用于更新相位(判断开火时机)，
-    // 但 choose_aim_point 在 spinning 模式下会返回一个相对于车体中心固定的点。
     
-    // 备份状态用于回滚
     Eigen::VectorXd temp_state = state;
     ExtendedKalmanFilter ekf_fwd = set_ekf(DT);
     
-    // 初始化前一帧数据
-    // 回退一个 DT 用于计算速度
+  
     ExtendedKalmanFilter ekf_back = set_ekf(-DT);
-    ekf_back.setState(temp_state); 
+    ekf_back.setState(state); 
     Eigen::VectorXd state_prev = ekf_back.Predict();
     auto yaw_pitch_last = getYP(state_prev);
     
-    auto yaw_pitch_curr = getYP(temp_state);
+    auto yaw_pitch_curr = getYP(state);
 
-    // 恢复状态
-    ekf_fwd.setState(temp_state);
+    // 此时为当前时刻的状态
+    ekf_fwd.setState(state);
 
     for (int i = 0; i < HORIZON; i++) {
-        // 步进预测
         temp_state = ekf_fwd.Predict();
         
         // 如果是静止模式，Predict 内部使用了修改后的 state(9)=0，所以不会转
@@ -315,13 +302,12 @@ Eigen::Matrix<double, 4, HORIZON> StandardObserver::get_trajectory()
         
         auto yaw_pitch_next = getYP(temp_state);
 
-        // 计算角速度 (差分)
         double pred_yaw_vel = (yaw_pitch_next.first - yaw_pitch_last.first) / (2.0 * DT);
         double pred_pitch_vel = (yaw_pitch_next.second - yaw_pitch_last.second) / (2.0 * DT);
         
+        // 这里返回的是{ yaw(差值), yaw_vel, pitch, pitch_vel }
         pretraj_matrix.col(i) << yaw_pitch_curr.first - yaw0, pred_yaw_vel, yaw_pitch_curr.second, pred_pitch_vel;
 
-        // 更新滑动窗口
         yaw_pitch_last = yaw_pitch_curr;
         yaw_pitch_curr = yaw_pitch_next;
     }
@@ -372,46 +358,28 @@ Eigen::Matrix<double, 4, HORIZON> StandardObserver::get_trajectory()
 std::vector<double> StandardObserver::choose_aim_point(const Eigen::VectorXd& state, bool is_spinning_mode)
 {
     // state: xc, vxc, yc, vyc, z1, z2, r1, r2, yaw, vyaw
-    // 4号装甲板为例
-    int armors_num = 4; // 这里假设是步兵4板，如果是哨兵或平衡步兵可能需要适配
-    
-    // 如果是小陀螺模式 (Waiting Strategy)
-    if (is_spinning_mode) {
-        // 策略：不追随装甲板旋转。
-        // 而是瞄准“车体中心 + 靠近我方枪口方向的半径”。
-        // 即：等待装甲板转到正对着我们的位置。
-        
-        // 1. 获取目标中心 (xc, yc)
+    int armors_num = 4; 
+
+    // TOP
+    // 不追随装甲板旋转,而是等待装甲板转到正对着我们的位置
+    if (is_spinning_mode) { 
         double xc = state(0);
         double yc = state(2);
-        
-        // 2. 确定我们要瞄准的半径方向
-        // 通常我们希望瞄准离我们最近的点，也就是正对着枪口的方向。
-        // gimbal_yaw_ 是当前云台指向世界坐标系的角度
-        // 对应的向量是 (cos(gimbal_yaw), sin(gimbal_yaw))
-        // 目标表面离我们最近的点，其法线方向应该是指向我们的，即 gimbal_yaw_ + PI
-        // 但这里的坐标计算公式是 center - r * cos(theta)，所以直接代入 gimbal_yaw_ 即可找到投影点
-        
         double wait_yaw = gimbal_yaw_; 
 
-        // 3. 确定半径 R 和 高度 Z
-        // 这是一个近似值，取 r1 和 r2 的平均值，或者根据拟合质量取。
-        // 为了稳健，可以取较大的那个半径，或者平均值
         double r = (state(6) + state(7)) / 2.0;
         double z = (state(4) + state(5)) / 2.0; 
         
-        // 4. 计算等待点 (Ambush Point)
-        // 这个点是车体几何中心向枪口方向平移 R 的位置
-        // 这样云台会平滑地跟随车体平移，而不会随装甲板画圆
         std::vector<double> aim_point{
-            xc - r * std::cos(wait_yaw),
-            yc - r * std::sin(wait_yaw),
+            state(0) - r * std::cos(wait_yaw),
+            state(2) - r * std::sin(wait_yaw),
             z
         };
         return aim_point;
     }
 
-    // --- 下面是常规逻辑 (Normal / Static) ---
+   // Normal/Static
+   // 选择与当前云台指向角度最近的装甲板
 
     double current_yaw = angles::normalize_angle(state(8));
     double yaw_diff_min = 1e3;
@@ -502,25 +470,17 @@ autoaim_interfaces::msg::Target StandardObserver::predict_target(autoaim_interfa
     track_armor(armors);
 
     if (find_state_ == TRACKING || find_state_ == TEMP_LOST) {
-      target.tracking = true; // 确保置位
-      
-      // 判断当前速度状态，决定 Aim Point
+      target.tracking = true;
+      target.id = tracking_number_; 
+      target.armors_num = 4;
       double vyaw = std::abs(target_state_(9));
-      bool is_spinning = vyaw > SPINNING_YAW_VEL_THRESH;
+      bool is_spinning = vyaw > TOP_YAW_VEL_THRESH;
 
-      
-      // 1. 设置当前目标点
-      // 如果是小陀螺，这里返回的是“等待点”，如果不是，返回的是“跟随点”
       auto curr_aim = choose_aim_point(target_state_, is_spinning);
       target.position.x = curr_aim[0];
       target.position.y = curr_aim[1];
       target.position.z = curr_aim[2]; 
       
-      // 2. 填充 id，用于电控判断是否切换了装甲板
-      target.id = tracking_number_; 
-      target.armors_num = 4; // 简化的假设，根据实际情况修改
-
-      // 3. 生成预测轨迹 (get_trajectory 内部已处理 static/normal/spinning 逻辑)
       Eigen::Matrix<double, 4, HORIZON> pretraj_matrix = get_trajectory();
       for(int i = 0; i < HORIZON; i++) {
         pretraj.yaw = pretraj_matrix.col(i)(0);
@@ -530,9 +490,6 @@ autoaim_interfaces::msg::Target StandardObserver::predict_target(autoaim_interfa
         target.pretraj.push_back(pretraj);
       }
       target.yaw0 = yaw0_;
-      
-      // [可选] 填充 v_yaw 供电控调试或做发弹逻辑判断
-      target.v_yaw = target_state_(9);
     } else {
       // target.tracking = false;
       return target;
@@ -540,7 +497,7 @@ autoaim_interfaces::msg::Target StandardObserver::predict_target(autoaim_interfa
     // Update threshold of temp lost
     params_.max_lost = std::max(static_cast<int>(params_.lost_time_thresh / dt_), 5);
   }
-  // RCLCPP_ERROR(logger_, "car_yaw: %f", target_state_(8));
+  RCLCPP_INFO(logger_, "car_yaw: %f", target_state_(8));
   return target;
 }
 
