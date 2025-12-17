@@ -3,7 +3,7 @@
 
 namespace math
 {
-float shortest_angular_distance(float from, float to)
+float get_angle_diff(float from, float to)
 {
     const float result = fmod((to - from) + M_PI, M_PI * 2.0f);
     if (result <= 0.0f)

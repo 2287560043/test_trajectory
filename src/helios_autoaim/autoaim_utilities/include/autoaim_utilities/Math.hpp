@@ -4,7 +4,7 @@
 
 namespace math 
 {
-float shortest_angular_distance(float from, float to);
+float get_angle_diff(float from, float to);
 
 std::vector<float> xyz2ypd(std::vector<float> &xyz);
 

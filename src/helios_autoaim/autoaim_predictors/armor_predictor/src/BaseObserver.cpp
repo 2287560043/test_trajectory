@@ -225,7 +225,7 @@ Eigen::MatrixXd BaseObserver::getScoreMat(const autoaim_interfaces::msg::Armors:
     for (int j = 0; j < n; j++)
     {
       negative_score(i * n + j, 0) = getDistance(detect_armors[i].pose.position, standard_armors[j].pose.position);
-      negative_score(i * n + j, 1) = std::abs(angles::shortest_angular_distance(
+      negative_score(i * n + j, 1) = std::abs(math::get_angle_diff(
           orientation2yaw(detect_armors[i].pose.orientation), orientation2yaw(standard_armors[j].pose.orientation)));
     }
   }

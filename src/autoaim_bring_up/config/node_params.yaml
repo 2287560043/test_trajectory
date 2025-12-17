@@ -7,7 +7,7 @@
 /mv_camera:
   ros__parameters:
     camera_info_url: package://mindvision_camera/config/camera_info.yaml
-    exposure_time: 7000
+    exposure_time: 4000
     gamma: 100
     rgb_gain.r: 100
     rgb_gain.g: 100
@@ -68,10 +68,10 @@
     priority_sequence: ["1", "guard", "2", "3", "4", "5"]
     standard_observer:
       ekf:
-        sigma2_q_xyz: 300.0
+        sigma2_q_xyz: 100.0
         sigma2_q_yaw: 50.0
-        sigma2_q_r: 2000.0
-        r_xyz_factor: 0.01
+        sigma2_q_r: 200.0
+        r_xyz_factor: 0.1
         r_yaw: 0.05
     outpost_observer:
       ekf:

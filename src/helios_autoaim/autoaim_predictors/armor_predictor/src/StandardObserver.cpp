@@ -11,7 +11,7 @@
 namespace helios_cv
 {
 const double STATIC_YAW_VEL_THRESH = 0.008;  // rad/s
-const double TOP_YAW_VEL_THRESH = 0.5; // rad/s
+const double TOP_YAW_VEL_THRESH = 2.0; // rad/s
 
 StandardObserver::StandardObserver(const StandardObserverParams& params) : params_(params)
 {
@@ -161,14 +161,14 @@ ExtendedKalmanFilter StandardObserver::set_ekf(double dt)
     if (armor_match_.size() == 2)
     {
       Eigen::VectorXd diff(8);
-      diff << z.segment(0, 3) - input_z.segment(0, 3), -angles::shortest_angular_distance(z(3), input_z(3)),
-          z.segment(4, 3) - input_z.segment(4, 3), -angles::shortest_angular_distance(z(7), input_z(7));
+      diff << z.segment(0, 3) - input_z.segment(0, 3), -math::get_angle_diff(z(3), input_z(3)),
+          z.segment(4, 3) - input_z.segment(4, 3), -math::get_angle_diff(z(7), input_z(7));
       return diff;
     }
     else
     {
       Eigen::VectorXd diff(4);
-      diff << z.segment(0, 3) - input_z.segment(0, 3), -angles::shortest_angular_distance(z(3), input_z(3));
+      diff << z.segment(0, 3) - input_z.segment(0, 3), -math::get_angle_diff(z(3), input_z(3));
       return diff;
     }
   };
@@ -330,7 +330,7 @@ Eigen::Matrix<double, 4, HORIZON> StandardObserver::get_trajectory()
 //         double tmp_yaw = current_yaw + i * (2.0 * M_PI / armors_num);
 //         tmp_yaw = angles::normalize_angle(tmp_yaw);
 
-//         double temp_yaw_diff = fabs(angles::shortest_angular_distance(gimbal_yaw_, tmp_yaw));
+//         double temp_yaw_diff = fabs(math::get_angle_diff(gimbal_yaw_, tmp_yaw));
 //         if (temp_yaw_diff < yaw_diff_min) {
 //             yaw_diff_min = temp_yaw_diff;
 //             best_armor_yaw = tmp_yaw;
@@ -390,7 +390,7 @@ std::vector<double> StandardObserver::choose_aim_point(const Eigen::VectorXd& st
         double tmp_yaw = current_yaw + i * (2.0 * M_PI / armors_num);
         tmp_yaw = angles::normalize_angle(tmp_yaw);
 
-        double temp_yaw_diff = fabs(angles::shortest_angular_distance(gimbal_yaw_, tmp_yaw));
+        double temp_yaw_diff = fabs(math::get_angle_diff(gimbal_yaw_, tmp_yaw));
         if (temp_yaw_diff < yaw_diff_min) {
             yaw_diff_min = temp_yaw_diff;
             best_armor_yaw = tmp_yaw;
@@ -497,7 +497,7 @@ autoaim_interfaces::msg::Target StandardObserver::predict_target(autoaim_interfa
     // Update threshold of temp lost
     params_.max_lost = std::max(static_cast<int>(params_.lost_time_thresh / dt_), 5);
   }
-  RCLCPP_INFO(logger_, "car_yaw: %f", target_state_(8));
+  // RCLCPP_INFO(logger_, "car_yaw: %f", target_state_(8));
   return target;
 }
 
@@ -550,6 +550,59 @@ void StandardObserver::track_armor(autoaim_interfaces::msg::Armors armors)
           }
           Eigen::MatrixXd score = getScoreMat(same_id_armor.armors, standard_armor.armors);
           armor_match_ = getMatch(score, m_score_tolerance, 4);
+
+          // temp add 
+          double pred_car_yaw = target_state_(8); 
+          
+          for (auto& match : armor_match_) {
+              int obs_idx = match.first; 
+              int geo_sec = match.second; // 几何匹配算出的原始相位
+              
+              double obs_armor_yaw = orientation2yaw(same_id_armor.armors[obs_idx].pose.orientation);
+              
+              // 计算：如果按照几何匹配的相位，观测值和预测值的偏差是多少？
+              double geo_theoretical_yaw = pred_car_yaw + geo_sec * M_PI / 2.0;
+              double geo_diff = angles::shortest_angular_distance(geo_theoretical_yaw, obs_armor_yaw);
+
+              // 阈值设为 0.8 (约45度)。
+              // 如果偏差超过 45度，说明"最近邻匹配"失效了，它匹配到了错误的板子（因为车转得比预测快太多）
+              // 这种情况在高速小陀螺起步或 EKF 速度跟不上时必然发生。
+              if (std::abs(geo_diff) > 0.8) { 
+                  
+                  // 暴力穷举：找一个偏差最小的相位
+                  int best_sec = geo_sec;
+                  double min_diff = 1e9;
+
+                  for (int sec = 0; sec < 4; sec++) {
+                      double theoretical_yaw = pred_car_yaw + sec * M_PI / 2.0;
+                      double diff = std::abs(angles::shortest_angular_distance(theoretical_yaw, obs_armor_yaw));
+                      
+                      if (diff < min_diff) {
+                          min_diff = diff;
+                          best_sec = sec;
+                      }
+                  }
+                  
+                  // 只有当新相位真的能显著减小误差时才应用
+                  // 这一步能把"看似微小的回退"修正为"巨大的前进"
+                  match.second = best_sec;
+                  
+                  RCLCPP_WARN(logger_, "Aliasing detected! Force switch sec from %d to %d. Diff: %.2f", 
+                              geo_sec, best_sec, geo_diff);
+              } 
+              // else: 偏差很小，说明几何匹配是对的，不需要乱动
+          }
+
+          // verify 
+          for (auto& match : armor_match_) {
+            int num = match.first;
+            int best_match = match.second;
+            RCLCPP_INFO(logger_, "armor %d, best match: %d", num, best_match);
+          }
+
+
+          // temp add
+
                     
           if (armor_match_.size() == 1) {
             int num = armor_match_.begin()->first;

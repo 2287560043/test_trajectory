@@ -74,7 +74,7 @@ OutpostObserver::OutpostObserver(const OutpostObserverParams& params) : params_(
   };
   auto measurement_diff = [this](const Eigen::VectorXd& z, const Eigen::VectorXd& input_z) -> Eigen::VectorXd {
     Eigen::VectorXd diff(4);
-    diff << z.segment(0, 3) - input_z.segment(0, 3), -angles::shortest_angular_distance(z(3), input_z(3));
+    diff << z.segment(0, 3) - input_z.segment(0, 3), -math::get_angle_diff(z(3), input_z(3));
     return diff;
   };
   Eigen::DiagonalMatrix<double, 5> p0;
