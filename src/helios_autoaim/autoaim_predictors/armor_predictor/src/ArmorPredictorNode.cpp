@@ -337,8 +337,8 @@ void ArmorPredictorNode::get_marker_array(autoaim_interfaces::msg::Target target
     target_armor_marker_.action = visualization_msgs::msg::Marker::DELETE;
   }
   target_marker_array_.markers.emplace_back(position_marker_);
-  // target_marker_array_.markers.emplace_back(linear_v_marker_);
-  // target_marker_array_.markers.emplace_back(angular_v_marker_);
+  target_marker_array_.markers.emplace_back(linear_v_marker_);
+  target_marker_array_.markers.emplace_back(angular_v_marker_);
 
   target_marker_pub_->publish(target_marker_array_);
 }
