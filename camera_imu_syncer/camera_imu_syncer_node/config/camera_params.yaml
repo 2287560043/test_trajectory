@@ -1,0 +1,11 @@
+/mindvision_camera:
+  ros__parameters:
+    camera_name: mindvision_camera
+
+    analog_gain: 32
+    exposure_time: 3000
+
+    rgb_gain:
+      b: 150
+      g: 100
+      r: 50

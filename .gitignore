@@ -1,0 +1,78 @@
+*/.cache
+.cache
+.cache/*
+.ssh
+*/.ssh
+.ssh/*
+cache
+cache/*
+*/cache
+Camera
+Camera/*
+*/Camera
+
+# ignore pycache
+__pycache__
+*/__pycache__
+__pycache__/*
+*/__pycache__/*
+
+build/*
+build
+install/*
+install
+log/*
+log
+
+# Prerequisites
+*.d
+
+# Compiled Object files
+*.slo
+*.lo
+*.o
+*.obj
+
+# Precompiled Headers
+*.gch
+*.pch
+
+# Compiled Dynamic libraries
+*.so
+*.dylib
+*.dll
+
+# Fortran module files
+*.mod
+*.smod
+
+# Compiled Static libraries
+*.lai
+*.la
+*.a
+*.lib
+
+# Executables
+*.exe
+*.out
+*.app
+
+# build files
+/build
+/log
+/install
+
+# cache files
+*.cache
+__pycache__
+
+# vscode files
+/.vscode
+/.VSCodeCounter
+
+# vim 文件
+*.swp
+.nvimlog
+
+# MacOS files
+.DS_Store

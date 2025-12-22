@@ -1,0 +1,20 @@
+$:
+  api_trigger_vscode:
+    # 此处使用数组格式, 可覆盖掉默认配置中的对象格式
+    # 可根据实际情况修改下方配置
+    - docker:
+        build: .ide/Dockerfile
+      services:
+        - vscode
+        - docker
+      stages:
+        - name: 开启云原生开发
+          type: vscode:go
+  push:
+    - docker:
+        build: .ide/Dockerfile
+      services:
+        - docker
+      stages:
+        - name: build
+          script: colcon build --symlink-install

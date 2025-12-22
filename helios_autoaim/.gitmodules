@@ -1,0 +1,6 @@
+[submodule "autoaim_predictors"]
+	path = autoaim_predictors
+	url = git@e.coding.net:swjtuhelios/cv/autoaim_predictors.git
+[submodule "autoaim_detectors"]
+	path = autoaim_detectors
+	url = git@e.coding.net:swjtuhelios/cv/autoaim_detectors.git

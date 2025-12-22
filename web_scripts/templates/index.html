@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Real-Time Data Update</title>
+</head>
+<body>
+    <h1>Real-Time Data Update</h1>
+
+    <!-- 显示实时更新的数据 -->
+    <div id="realTimeData">
+        <!-- 这里的内容会在 JavaScript 中动态更新 -->
+    </div>
+
+    <script>
+        // 创建 WebSocket 连接
+        const socket = new WebSocket('ws://localhost:8000/ws');
+
+        // 监听 WebSocket 连接打开事件
+        socket.onopen = function(event) {
+            console.log('WebSocket 连接已打开');
+        };
+
+        // 监听 WebSocket 接收到消息事件
+        socket.onmessage = function(event) {
+            // 将实时更新的数据显示在页面上
+            const realTimeDataElement = document.getElementById('realTimeData');
+            const data = JSON.parse(event.data);
+            realTimeDataElement.innerHTML = `<p>${data.message}</p>`;
+        };
+
+        // 监听 WebSocket 连接关闭事件
+        socket.onclose = function(event) {
+            console.log('WebSocket 连接已关闭');
+        };
+    </script>
+</body>
+</html>

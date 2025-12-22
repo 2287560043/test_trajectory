@@ -1,0 +1,97 @@
+/hik_camera:
+  ros__parameters:
+    camera_info_url: package://hik_camera/config/camera_info.yaml
+    exposure_time: 4000
+    gain: 8.0
+    flip_image: false
+/mv_camera:
+  ros__parameters:
+    camera_info_url: package://mindvision_camera/config/camera_info.yaml
+    exposure_time: 5000
+    gamma: 100
+    rgb_gain.r: 100
+    rgb_gain.g: 100
+    rgb_gain.b: 100
+    analog_gain: 128
+    flip_image: false
+/ctrl_bridge:
+  ros__parameters:
+    time_stamp_offset: 0.0
+    serial_name: /dev/ttyACM0
+    serial_baudrate: 921600.0
+    left_yaw2pitch_translation: 0.0
+/armor_detector:
+  ros__parameters:
+    use_projection: true
+    debug: true
+    is_blue: 0
+    autoaim_mode: 0
+    armor:
+      use_traditional: 1
+      traditional:
+        binary_thres: 130.0
+        number_classifier_threshold: 0.8
+        light:
+          min_ratio: 0.05
+          max_ration: 0.4
+          max_angle: 40.0
+        armor:
+          min_light_ratio: 0.15
+          min_small_center_distance: 0.8
+          max_small_center_distance: 3.6
+          min_large_center_distance: 3.6
+          max_large_center_distance: 9.2
+          max_angle: 40.0
+      net:
+        model_path: 0405_9744.onnx
+        net_classifier_threshold: 0.65
+    energy:
+      use_traditional: 1
+      traditional:
+        binary_thres: 170.0
+        white_mask_thres: 230
+        rgb_weight_r_1: 1.7
+        rgb_weight_r_2: 0.3
+        rgb_weight_r_3: 0.0
+        rgb_weight_b_1: 0.0
+        rgb_weight_b_2: 0.0
+        rgb_weight_b_3: 0.85
+      net:
+        model_path: energy-8-n6-9994.onnx
+        net_classifier_threshold: 0.6
+/armor_predictor:
+  ros__parameters:
+    debug: true
+    autoaim_mode: 0
+    target_frame: odoom
+    is_sentry: false
+    priority_sequence: ["1", "guard", "2", "3", "4", "5"]
+    standard_observer:
+      ekf:
+        sigma2_q_xyz: 50.0
+        sigma2_q_yaw: 50.0
+        sigma2_q_r: 800.0
+        r_xyz_factor: 0.05
+        r_yaw: 0.01
+    outpost_observer:
+      ekf:
+        sigma2_q_xyz: 0.05
+        sigma2_q_yaw: 5.0
+        r_xyz_factor: 500.0
+        r_yaw: 0.01
+    max_lost: 5.0
+    max_detect: 5.0
+    lost_time_thres_: 0.3
+/energy_predictor:
+  ros__parameters:
+    debug: true
+    autoaim_mode: 0
+    target_frame: odoom
+    kf_params:
+      sigma_q_x: 8.0
+      sigma_q_v: 5.0
+      sigma_q_a: 5.0
+      sigma_r_x: 12.0 
+      sigma_r_v: 5.0
+    max_lost: 20
+    max_detect: 5

@@ -1,0 +1,10 @@
+camera: mv
+
+odom2camera:
+  xyz: "\"0.02 0.0 0.04\""
+  rpy: "\"0.0  0.0 0.0\""
+
+detector_log_level: INFO
+predictor_log_level: INFO
+ctrl_bridge_log_level: DEBUG
+
