@@ -148,7 +148,7 @@ void Syncer::addCameraFrame(std::shared_ptr<CameraInfo> cameraInfo) {
                     ++n;
                 }
             }
-            if (n != 0 && (timeSum / n) < 10000000 && (timeSum / n) > 3000000) {
+            if (n != 0 && (timeSum / n) < 10000000 && (timeSum / n) > 1000000) {
             } else {
                 std::cerr << "Delay happened" << std::endl;
                 cameraId = 0;
@@ -177,7 +177,7 @@ void Syncer::addCameraFrame(std::shared_ptr<CameraInfo> cameraInfo) {
                         ++n;
                     }
                 }
-                if (n != 0 && (timeSum / n) < 10000000 && (timeSum / n) > 3000000) {
+                if (n != 0 && (timeSum / n) < 10000000 && (timeSum / n) > 1000000) {
                     std::cout << timeSum / n << std::endl;
                     stable = true;
                     break;

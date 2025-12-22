@@ -12,6 +12,7 @@ else(CMAKE_SYSTEM_PROCESSOR MATCHES "aarch64|arm64")
     set(MVSDK_LIB_PATH ${MVSDK_ROOT}/lib/arm64/libMVSDK.so)
 endif()
 
+
 if(NOT EXISTS ${MVSDK_LIB_PATH})
     message(FATAL_ERROR "MVSDK library not found: ${MVSDK_LIB_PATH}")
 endif()

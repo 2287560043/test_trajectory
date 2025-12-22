@@ -51,7 +51,7 @@ bool Imu::validate_and_extract(const uint8_t* frame, uint16_t payload_len) {
                 frames_since_trigger.store(0);
                                 // syncer->addIMUFrame(std::make_shared<Syncer::ImuInfo>(data));
             }
-            if (frames_since_trigger == 1) {
+            if (frames_since_trigger == 5) {
                 syncer->addIMUFrame(std::make_shared<Syncer::ImuInfo>(data));
             }
             return true;
