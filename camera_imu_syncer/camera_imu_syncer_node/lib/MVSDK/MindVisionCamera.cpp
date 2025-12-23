@@ -329,7 +329,7 @@ void MindVisionCamera::frameCallback_static(
     // 获取当前系统时间（UTC）
     auto now = std::chrono::system_clock::now();
     
-    // 获取相机设备时间戳（单位：微秒）
+    // 获取相机设备时间戳（单位：微秒）用于计算曝光代码
     UINT high, low;
     CameraGetDevTimeStamp(hCamera, &low, &high);
     uint64_t dev_us = ((uint64_t)high << 32) | low;
@@ -337,18 +337,35 @@ void MindVisionCamera::frameCallback_static(
     // 相机内部时间戳转换为微秒（0.1ms → µs）
     uint64_t frame_internal_us = static_cast<uint64_t>(pHead->uiTimeStamp) * 100;
     
-    // 计算相机内部时间戳与设备时间戳的差异
-    // 这反映了相机内部计时与设备时间的偏差
-    int64_t time_offset_us = static_cast<int64_t>(dev_us) - static_cast<int64_t>(frame_internal_us);
+    // 计算相机内部时间戳与设备时间戳的差异（用于曝光时间计算）
+    int64_t exposure_offset_us = static_cast<int64_t>(dev_us) - static_cast<int64_t>(frame_internal_us);
     
-    // 使用系统时间作为基准，通过偏差量计算帧的准确采集时间
-    // 方法：当前系统时间 - 偏差量 = 帧采集时间
-    auto frame_capture_time = now - std::chrono::microseconds(time_offset_us);
+    // 计算曝光刹那的系统时间：当前系统时间 - 设备时间偏差
+    auto exposure_time = now - std::chrono::microseconds(exposure_offset_us + pHead->uiExpTime);
     
-    // 转换为毫秒级时间戳（UTC时间的毫秒表示）
-    auto frame_time_ms = std::chrono::duration_cast<std::chrono::milliseconds>(
-        frame_capture_time.time_since_epoch()
-    ).count();
+    // 从曝光刹那的时间计算GPRMC格式的时间戳
+    auto time_t_exposure = std::chrono::system_clock::to_time_t(exposure_time);
+    std::tm tm_utc;
+    gmtime_r(&time_t_exposure, &tm_utc);
+
+    // 计算当日从00:00:00开始的毫秒数
+    // 公式：(时*3600 + 分*60 + 秒) * 1000 + 毫秒
+    uint32_t seconds_of_day = tm_utc.tm_hour * 3600 + tm_utc.tm_min * 60 + tm_utc.tm_sec;
+    uint32_t milliseconds_of_day = seconds_of_day * 1000;
+    
+    // 获取曝光刹那时间的毫秒部分
+    auto ms_part = std::chrono::duration_cast<std::chrono::milliseconds>(
+        exposure_time.time_since_epoch()
+    ).count() % 1000;
+    
+    // 最终时间戳：从当日UTC 00:00:00开始的毫秒计数 (0~86,399,999 ms)
+    // 这是曝光刹那的GPRMC时钟
+    uint32_t frame_timestamp_ms = milliseconds_of_day + ms_part;
+    
+    // 验证时间戳范围 (86,399,999 ms = 23:59:59.999)
+    if (frame_timestamp_ms >= 86400000) {
+        frame_timestamp_ms = frame_timestamp_ms % 86400000;  // 防止越界
+    }
 
     // 检查帧数据有效性
     if (pHead->uBytes == 0 || pHead->iWidth <= 0 || pHead->iHeight <= 0) {
@@ -388,7 +405,7 @@ void MindVisionCamera::frameCallback_static(
     // 调用用户回调，传递0拷贝的Mat
     // 如需在回调外保存frame，必须使用 frame.clone()
 
-    camera->m_frameCallback(pHead, pBuffer, frame_time_ms);
+    camera->m_frameCallback(pHead, pBuffer, frame_timestamp_ms);
 
     // 回调返回后立即释放内存
     // delete[] pProcessedBuffer;

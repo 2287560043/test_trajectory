@@ -212,6 +212,7 @@ bool Imu::validate_and_extract(const uint8_t* frame, uint16_t payload_len) {
                 } else {
                     std::cout << "\n  └─ Local Time: " << data.system_time << " ms (等待同步...)";
                 }
+                
                 syncer->addIMUFrame(std::make_shared<Syncer::ImuInfo>(data, data.system_time));
 
                 std::cout << std::endl;
