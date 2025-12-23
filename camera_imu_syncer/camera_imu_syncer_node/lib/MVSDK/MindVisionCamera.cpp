@@ -338,17 +338,8 @@ void MindVisionCamera::frameCallback_static(
 
     uint32_t ms_of_day = (tm_utc.tm_hour * 3600 + tm_utc.tm_min * 60 + tm_utc.tm_sec) * 1000;
     auto ms = std::chrono::duration_cast<std::chrono::milliseconds>(now.time_since_epoch()) % 1000;
-    auto now_ms = std::chrono::duration_cast<std::chrono::milliseconds>(now.time_since_epoch());
-    auto ms_part = now_ms % 1000; // 当前时间的毫秒部分（0~999）
 
-    // 将 diff_us + 2000 微秒转换为毫秒（注意向下取整）
-    auto diff_ms = std::chrono::duration_cast<std::chrono::milliseconds>(
-        std::chrono::microseconds(diff_us + 2000)
-    );
-
-    auto total_ms = ms_part - diff_ms;
-
-    auto targetTime = ms_of_day +ms.count();
+    auto targetTime = ms_of_day +ms.count()-diff_us/1000-2;
 
     auto* camera = static_cast<MindVisionCamera*>(pContext);
     if (!camera || !camera->m_frameCallback || !pBuffer || !pHead)
