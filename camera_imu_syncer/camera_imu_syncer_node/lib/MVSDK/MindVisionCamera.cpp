@@ -331,7 +331,7 @@ void MindVisionCamera::frameCallback_static(
     uint64_t diff_us = static_cast<uint64_t>(dev_us) - static_cast<uint64_t>(ui_us);
     auto now = std::chrono::system_clock::now();
 
-    auto past_tp = now - std::chrono::microseconds(diff_us);
+    auto past_tp = now - std::chrono::microseconds(diff_us+2000);
     int64_t targetTime =
         std::chrono::duration_cast<std::chrono::milliseconds>(past_tp.time_since_epoch()).count();
     // std::cout << "Timestamp: " << diff_us / 1000.0f << " ms" << std::endl;
