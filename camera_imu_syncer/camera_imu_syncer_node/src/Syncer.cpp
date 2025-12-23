@@ -102,7 +102,7 @@ Syncer::Syncer(
                 std::cout << "\n  ├─ IMU Time:    "
                           << Imu::ms_to_utc_time(imuInfos[imuIndex]->targetTime)
                           << "\n  ├─ Camera Time: "
-                          << Imu::ms_to_utc_time(cameraInfos[cameraIndex]->targetTime) << " ms";
+                          << Imu::ms_to_utc_time(cameraInfos[cameraIndex]->targetTime);
 
                 // std::cout << "offset: " << offset << ","
                 //           << " cameraId: " << cameraInfos[cameraIndex]->id << ","
