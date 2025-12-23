@@ -322,28 +322,33 @@ void MindVisionCamera::frameCallback_static(
     tSdkFrameHead* pHead,
     PVOID pContext
 ) {
-    UINT high, low;
-    CameraGetDevTimeStamp(hCamera, &low, &high);
-    auto now = std::chrono::system_clock::now();
-
-    uint64_t dev_us = low; // 你的 low 本身就是 µs
-
-    uint64_t ui_us = static_cast<uint64_t>(pHead->uiTimeStamp) * 100; // 0.1ms → µs
-
-    uint64_t diff_us = static_cast<uint64_t>(dev_us) - static_cast<uint64_t>(ui_us);
-
-    auto time_t_now = std::chrono::system_clock::to_time_t(now);
-    std::tm tm_utc;
-    gmtime_r(&time_t_now, &tm_utc);
-
-    uint32_t ms_of_day = (tm_utc.tm_hour * 3600 + tm_utc.tm_min * 60 + tm_utc.tm_sec) * 1000;
-    auto ms = std::chrono::duration_cast<std::chrono::milliseconds>((now-std::chrono::microseconds(diff_us+2000)).time_since_epoch()) % 1000;
-
-    auto targetTime = ms_of_day +ms.count()-diff_us/1000-2;
-
     auto* camera = static_cast<MindVisionCamera*>(pContext);
     if (!camera || !camera->m_frameCallback || !pBuffer || !pHead)
         return;
+
+    // 获取当前系统时间（UTC）
+    auto now = std::chrono::system_clock::now();
+    
+    // 获取相机设备时间戳（单位：微秒）
+    UINT high, low;
+    CameraGetDevTimeStamp(hCamera, &low, &high);
+    uint64_t dev_us = ((uint64_t)high << 32) | low;
+    
+    // 相机内部时间戳转换为微秒（0.1ms → µs）
+    uint64_t frame_internal_us = static_cast<uint64_t>(pHead->uiTimeStamp) * 100;
+    
+    // 计算相机内部时间戳与设备时间戳的差异
+    // 这反映了相机内部计时与设备时间的偏差
+    int64_t time_offset_us = static_cast<int64_t>(dev_us) - static_cast<int64_t>(frame_internal_us);
+    
+    // 使用系统时间作为基准，通过偏差量计算帧的准确采集时间
+    // 方法：当前系统时间 - 偏差量 = 帧采集时间
+    auto frame_capture_time = now - std::chrono::microseconds(time_offset_us);
+    
+    // 转换为毫秒级时间戳（UTC时间的毫秒表示）
+    auto frame_time_ms = std::chrono::duration_cast<std::chrono::milliseconds>(
+        frame_capture_time.time_since_epoch()
+    ).count();
 
     // 检查帧数据有效性
     if (pHead->uBytes == 0 || pHead->iWidth <= 0 || pHead->iHeight <= 0) {
@@ -383,7 +388,7 @@ void MindVisionCamera::frameCallback_static(
     // 调用用户回调，传递0拷贝的Mat
     // 如需在回调外保存frame，必须使用 frame.clone()
 
-    camera->m_frameCallback(pHead, pBuffer, targetTime);
+    camera->m_frameCallback(pHead, pBuffer, frame_time_ms);
 
     // 回调返回后立即释放内存
     // delete[] pProcessedBuffer;
