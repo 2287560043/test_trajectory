@@ -63,7 +63,7 @@ public:
         float q_w, q_x, q_y, q_z;
         int64_t targetTime;
 
-        ImuInfo(const HI91Data& _HI91Data,int64_t _targetTime):
+        ImuInfo(const HI91Data& _HI91Data, int64_t _targetTime):
             time(std::chrono::high_resolution_clock::now()),
             tag(_HI91Data.tag),
             status(_HI91Data.status),

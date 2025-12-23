@@ -22,7 +22,8 @@ struct CameraParams {
 class MindVisionCamera {
 public:
     // 帧回调函数类型
-    typedef std::function<void(tSdkFrameHead* pHead, BYTE* pBuffer,int64_t timeDiff)> FrameCallback;
+    typedef std::function<void(tSdkFrameHead* pHead, BYTE* pBuffer, int64_t timeDiff)>
+        FrameCallback;
 
     // 错误回调函数类型
     typedef std::function<void(const std::string& message, CameraSdkStatus code)> ErrorCallback;
