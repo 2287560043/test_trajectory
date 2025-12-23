@@ -337,7 +337,7 @@ void MindVisionCamera::frameCallback_static(
     gmtime_r(&time_t_now, &tm_utc);
 
     uint32_t ms_of_day = (tm_utc.tm_hour * 3600 + tm_utc.tm_min * 60 + tm_utc.tm_sec) * 1000;
-    auto ms = std::chrono::duration_cast<std::chrono::milliseconds>(now.time_since_epoch()) % 1000;
+    auto ms = std::chrono::duration_cast<std::chrono::milliseconds>((now-std::chrono::microseconds(diff_us+2000)).time_since_epoch()) % 1000;
 
     auto targetTime = ms_of_day +ms.count()-diff_us/1000-2;
 
