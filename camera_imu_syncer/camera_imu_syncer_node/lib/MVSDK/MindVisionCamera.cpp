@@ -324,17 +324,23 @@ void MindVisionCamera::frameCallback_static(
 ) {
     UINT high, low;
     CameraGetDevTimeStamp(hCamera, &low, &high);
+    auto now = std::chrono::system_clock::now();
+
     uint64_t dev_us = low; // 你的 low 本身就是 µs
 
     uint64_t ui_us = static_cast<uint64_t>(pHead->uiTimeStamp) * 100; // 0.1ms → µs
 
     uint64_t diff_us = static_cast<uint64_t>(dev_us) - static_cast<uint64_t>(ui_us);
-    auto now = std::chrono::system_clock::now();
 
-    auto past_tp = now - std::chrono::microseconds(diff_us+2000);
-    int64_t targetTime =
-        std::chrono::duration_cast<std::chrono::milliseconds>(past_tp.time_since_epoch()).count();
-    // std::cout << "Timestamp: " << diff_us / 1000.0f << " ms" << std::endl;
+    auto time_t_now = std::chrono::system_clock::to_time_t(now);
+    std::tm tm_utc;
+    gmtime_r(&time_t_now, &tm_utc);
+
+    uint32_t ms_of_day = (tm_utc.tm_hour * 3600 + tm_utc.tm_min * 60 + tm_utc.tm_sec) * 1000;
+    auto ms = std::chrono::duration_cast<std::chrono::milliseconds>(now.time_since_epoch()) % 1000;
+
+    auto targetTime = ms_of_day + ms.count() - std::chrono::microseconds(diff_us + 2000).count();
+
     auto* camera = static_cast<MindVisionCamera*>(pContext);
     if (!camera || !camera->m_frameCallback || !pBuffer || !pHead)
         return;
