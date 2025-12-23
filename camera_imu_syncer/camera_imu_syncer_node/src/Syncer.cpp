@@ -104,16 +104,16 @@ Syncer::Syncer(
                 imagePub->publish(std::move(imageMsg));
                 infoPub->publish(std::move(infoMsg));
 
-                std::cout << "offset: " << offset << ","
-                          << " cameraId: " << cameraInfos[cameraIndex]->id << ","
-                          << " imuId: " << imuInfos[imuIndex]->id << ","<<"newest cameraId: "<<cameraId<<",newest imuId: "<<imuId
-                          << " imu-camera time difference(ms):"
-                          << std::chrono::duration_cast<std::chrono::nanoseconds>(
-                                 cameraInfos[cameraIndex]->time - imuInfos[imuIndex]->time
-                             )
-                                 .count()
-                        / (double)1000000
-                          << std::endl;
+                // std::cout << "offset: " << offset << ","
+                //           << " cameraId: " << cameraInfos[cameraIndex]->id << ","
+                //           << " imuId: " << imuInfos[imuIndex]->id << ","<<"newest cameraId: "<<cameraId<<",newest imuId: "<<imuId
+                //           << " imu-camera time difference(ms):"
+                //           << std::chrono::duration_cast<std::chrono::nanoseconds>(
+                //                  cameraInfos[cameraIndex]->time - imuInfos[imuIndex]->time
+                //              )
+                //                  .count()
+                //         / (double)1000000
+                //           << std::endl;
 
             }
         }

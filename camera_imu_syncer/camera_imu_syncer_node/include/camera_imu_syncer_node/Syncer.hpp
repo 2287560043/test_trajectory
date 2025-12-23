@@ -32,10 +32,11 @@ public:
     struct CameraInfo {
         std::chrono::high_resolution_clock::time_point time;
         uint64_t id;
+        int timeDiff;
         tSdkFrameHead pHead;
         BYTE* pBuffer;
-        CameraInfo(tSdkFrameHead* _pHead, BYTE* _pBuffer):
-            time(std::chrono::high_resolution_clock::now()),
+        CameraInfo(tSdkFrameHead* _pHead, BYTE* _pBuffer, int _timeDiff):
+            time(std::chrono::high_resolution_clock::now()), timeDiff(_timeDiff),
             pHead(*_pHead) {
             auto size = _pHead->uBytes;
             pBuffer = new BYTE[size];
