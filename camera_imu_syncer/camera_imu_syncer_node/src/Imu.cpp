@@ -188,9 +188,9 @@ bool Imu::validate_and_extract(const uint8_t* frame, uint16_t payload_len) {
             if (data.status & (1 << 12)) {
                 frame_count++;
 
-                std::cout << "  ├─ SOUT #" << std::setw(4) << frame_count.load() - 1
-                          << " | Status: 0x" << std::hex << data.status << std::dec
-                          << " | Sync: " << (utc_time_synced ? "✓" : "✗");
+                // std::cout << "  ├─ SOUT #" << std::setw(4) << frame_count.load() - 1
+                //           << " | Status: 0x" << std::hex << data.status << std::dec
+                //           << " | Sync: " << (utc_time_synced ? "✓" : "✗");
 
                 if (utc_time_synced) {
                     // 计算同步误差：IMU时间 - PC时间
