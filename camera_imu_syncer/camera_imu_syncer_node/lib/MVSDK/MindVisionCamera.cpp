@@ -322,18 +322,19 @@ void MindVisionCamera::frameCallback_static(
     tSdkFrameHead* pHead,
     PVOID pContext
 ) {
-     UINT high, low;
-  CameraGetDevTimeStamp(hCamera, &low, &high);
-uint64_t dev_us = low;  // 你的 low 本身就是 µs
+    UINT high, low;
+    CameraGetDevTimeStamp(hCamera, &low, &high);
+    uint64_t dev_us = low; // 你的 low 本身就是 µs
 
-uint64_t ui_us =
-    static_cast<uint64_t>(pHead->uiTimeStamp) * 100; // 0.1ms → µs
+    uint64_t ui_us = static_cast<uint64_t>(pHead->uiTimeStamp) * 100; // 0.1ms → µs
 
-int diff_us =
-    static_cast<int>(dev_us) -
-    static_cast<int>(ui_us);
+    uint64_t diff_us = static_cast<uint64_t>(dev_us) - static_cast<uint64_t>(ui_us);
+    auto now = std::chrono::system_clock::now();
 
-std::cout<<"Timestamp: "<<diff_us/1000.0f<<" ms"<<std::endl;
+    auto past_tp = now - std::chrono::microseconds(diff_us);
+    int64_t targetTime =
+        std::chrono::duration_cast<std::chrono::milliseconds>(past_tp.time_since_epoch()).count();
+    // std::cout << "Timestamp: " << diff_us / 1000.0f << " ms" << std::endl;
     auto* camera = static_cast<MindVisionCamera*>(pContext);
     if (!camera || !camera->m_frameCallback || !pBuffer || !pHead)
         return;
@@ -376,7 +377,7 @@ std::cout<<"Timestamp: "<<diff_us/1000.0f<<" ms"<<std::endl;
     // 调用用户回调，传递0拷贝的Mat
     // 如需在回调外保存frame，必须使用 frame.clone()
 
-    camera->m_frameCallback(pHead, pBuffer,diff_us);
+    camera->m_frameCallback(pHead, pBuffer, targetTime);
 
     // 回调返回后立即释放内存
     // delete[] pProcessedBuffer;

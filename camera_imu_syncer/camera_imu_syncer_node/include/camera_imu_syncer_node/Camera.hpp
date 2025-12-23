@@ -7,7 +7,7 @@ private:
     std::shared_ptr<Syncer> syncer;
 
     MindVisionCamera camera;
-    std::function<void(tSdkFrameHead* pHead, BYTE* pBuffer, int timeDiff)> frameCallback;
+    std::function<void(tSdkFrameHead* pHead, BYTE* pBuffer, int64_t timeDiff)> frameCallback;
 
 public:
     std::mutex mtx;

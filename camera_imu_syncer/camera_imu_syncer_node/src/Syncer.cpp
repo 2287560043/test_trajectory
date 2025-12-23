@@ -8,7 +8,6 @@
 #include <ostream>
 #include <rclcpp/rclcpp.hpp>
 #include <sensor_msgs/msg/image.hpp>
-
 #include <tf2/LinearMath/Quaternion.hpp>
 #include <tf2_geometry_msgs/tf2_geometry_msgs.hpp>
 #include <tf2_ros/transform_broadcaster.hpp>
@@ -43,9 +42,8 @@ Syncer::Syncer(
             cameraImuIndex.wait(cameraImuIndexOld);
 
             if (stable) {
-                
                 cameraImuIndexOld = cameraImuIndex;
-                int cameraIndex = (static_cast<uint8_t>(cameraImuIndexOld >> 8)+0)%10;
+                int cameraIndex = (static_cast<uint8_t>(cameraImuIndexOld >> 8) + 0) % 10;
                 int imuIndex = static_cast<uint8_t>(cameraImuIndexOld & 0xFF);
 
                 std::vector<geometry_msgs::msg::TransformStamped> transforms;
@@ -57,8 +55,8 @@ Syncer::Syncer(
                 //gu yi jia 10ms
                 // ts1.header.stamp = time + rclcpp::Duration(0, 10000000);
 
-
-                ts1.header.stamp =ts2.header.stamp=imageMsg->header.stamp =  infoMsg->header.stamp = clock->now();
+                ts1.header.stamp = ts2.header.stamp = imageMsg->header.stamp =
+                    infoMsg->header.stamp = clock->now();
                 ts1.header.frame_id = "odoom";
                 ts1.child_frame_id = "yaw_link";
                 ts1.transform.translation.x = 0;
@@ -69,7 +67,6 @@ Syncer::Syncer(
                 ts1.transform.rotation = tf2::toMsg(q1);
                 transforms.push_back(ts1);
 
-                
                 ts2.header.frame_id = "yaw_link";
                 ts2.child_frame_id = "pitch_link";
                 ts2.transform.translation.x = 0;
@@ -100,9 +97,12 @@ Syncer::Syncer(
                     0
                 );
 
-
                 imagePub->publish(std::move(imageMsg));
                 infoPub->publish(std::move(infoMsg));
+                std::cout << "\n  ├─ IMU Time:    "
+                          << Imu::ms_to_utc_time(imuInfos[imuIndex]->targetTime)
+                          << "\n  ├─ Camera Time: "
+                          << Imu::ms_to_utc_time(cameraInfos[cameraIndex]->targetTime) << " ms";
 
                 // std::cout << "offset: " << offset << ","
                 //           << " cameraId: " << cameraInfos[cameraIndex]->id << ","
@@ -114,7 +114,6 @@ Syncer::Syncer(
                 //                  .count()
                 //         / (double)1000000
                 //           << std::endl;
-
             }
         }
     } };
@@ -129,7 +128,6 @@ void Syncer::addCameraFrame(std::shared_ptr<CameraInfo> cameraInfo) {
             uint8_t imuIndex = (cameraId - offset) % 10;
             cameraImuIndex = (static_cast<uint16_t>(cameraIndex) << 8) | imuIndex;
             cameraImuIndex.notify_one();
-
         }
         if (cameraId % 1000 == 0) {
             int timeSum = 0;

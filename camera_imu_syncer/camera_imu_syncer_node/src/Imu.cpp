@@ -6,20 +6,6 @@
 #include <cstring>
 #include <thread>
 
-// boost::asio::io_context io_service;
-// boost::asio::serial_port serial;
-// std::thread io_thread;
-// std::thread sync_thread;
-//
-// std::vector<uint8_t> read_buffer;
-// std::vector<uint8_t> parse_buffer;
-// size_t parse_pos = 0;
-// std::atomic<size_t> frame_count{0};
-// std::atomic<size_t> sync_count{0};
-// std::atomic<bool> sync_enabled{true};
-// std::atomic<bool> utc_synced{false};
-// std::atomic<bool> imu_ready{false};  // IMU就绪标志
-
 void Imu::calculate_crc16(uint16_t* crc, const uint8_t* buf, uint32_t len) {
     uint32_t crc_val = *crc;
     for (uint32_t j = 0; j < len; ++j) {
@@ -218,15 +204,15 @@ bool Imu::validate_and_extract(const uint8_t* frame, uint16_t payload_len) {
                         sync_error += 86400000;
                     }
 
-                    std::cout << "\n  ├─ IMU Time:  " << ms_to_utc_time(data.system_time)
-                              << "\n  ├─ PC Time:   " << ms_to_utc_time(pc_recv_time_ms)
-                              << "\n  └─ Error: " << std::showpos << sync_error << std::noshowpos
-                              << " ms";
+                    // std::cout << "\n  ├─ IMU Time:  " << ms_to_utc_time(data.system_time)
+                    //           << "\n  ├─ PC Time:   " << ms_to_utc_time(pc_recv_time_ms)
+                    //           << "\n  └─ Error: " << std::showpos << sync_error << std::noshowpos
+                    //           << " ms";
 
                 } else {
                     std::cout << "\n  └─ Local Time: " << data.system_time << " ms (等待同步...)";
                 }
-                syncer->addIMUFrame(std::make_shared<Syncer::ImuInfo>(data));
+                syncer->addIMUFrame(std::make_shared<Syncer::ImuInfo>(data,data.system_time));
 
                 std::cout << std::endl;
             }

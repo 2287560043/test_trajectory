@@ -39,13 +39,13 @@ private:
     void set_rts_physical(bool physical_high);
     std::string generate_gprmc();
     uint32_t get_utc_ms_of_day();
-    std::string ms_to_utc_time(uint32_t total_ms);
     std::string generate_gprmc_for_time(std::chrono::system_clock::time_point target_time);
     void sync_loop();
     bool validate_and_extract(const uint8_t* frame, uint16_t payload_len);
     void parse_data(const uint8_t* data, size_t len);
 
 public:
+    static std::string ms_to_utc_time(uint32_t total_ms);
     Imu(std::shared_ptr<Syncer> _syncer);
     bool open(const std::string& port);
     void start_read();

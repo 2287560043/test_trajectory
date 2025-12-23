@@ -32,11 +32,12 @@ public:
     struct CameraInfo {
         std::chrono::high_resolution_clock::time_point time;
         uint64_t id;
-        int timeDiff;
+        int64_t targetTime;
         tSdkFrameHead pHead;
         BYTE* pBuffer;
-        CameraInfo(tSdkFrameHead* _pHead, BYTE* _pBuffer, int _timeDiff):
-            time(std::chrono::high_resolution_clock::now()), timeDiff(_timeDiff),
+        CameraInfo(tSdkFrameHead* _pHead, BYTE* _pBuffer, int64_t _targetTime):
+            time(std::chrono::high_resolution_clock::now()),
+            targetTime(_targetTime),
             pHead(*_pHead) {
             auto size = _pHead->uBytes;
             pBuffer = new BYTE[size];
@@ -60,7 +61,9 @@ public:
         float mag_b_x, mag_b_y, mag_b_z;
         float roll, pitch, yaw;
         float q_w, q_x, q_y, q_z;
-        ImuInfo(const HI91Data& _HI91Data):
+        int64_t targetTime;
+
+        ImuInfo(const HI91Data& _HI91Data,int64_t _targetTime):
             time(std::chrono::high_resolution_clock::now()),
             tag(_HI91Data.tag),
             status(_HI91Data.status),
@@ -82,7 +85,8 @@ public:
             q_w(_HI91Data.q_w),
             q_x(_HI91Data.q_x),
             q_y(_HI91Data.q_y),
-            q_z(_HI91Data.q_z) {}
+            q_z(_HI91Data.q_z),
+            targetTime(_targetTime) {}
     };
     Syncer(
         rclcpp::Publisher<camera_imu_syncer_interfaces::msg::CameraImuSync>::SharedPtr _pub,
