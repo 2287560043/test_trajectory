@@ -102,18 +102,18 @@ Syncer::Syncer(
                 std::cout << "\n  ├─ IMU Time:    "
                           << Imu::ms_to_utc_time(imuInfos[imuIndex]->targetTime)
                           << "\n  ├─ Camera Time: "
-                          << Imu::ms_to_utc_time(cameraInfos[cameraIndex]->targetTime);
+                          << Imu::ms_to_utc_time(cameraInfos[cameraIndex]->targetTime)<<std::endl;
 
-                // std::cout << "offset: " << offset << ","
-                //           << " cameraId: " << cameraInfos[cameraIndex]->id << ","
-                //           << " imuId: " << imuInfos[imuIndex]->id << ","<<"newest cameraId: "<<cameraId<<",newest imuId: "<<imuId
-                //           << " imu-camera time difference(ms):"
-                //           << std::chrono::duration_cast<std::chrono::nanoseconds>(
-                //                  cameraInfos[cameraIndex]->time - imuInfos[imuIndex]->time
-                //              )
-                //                  .count()
-                //         / (double)1000000
-                //           << std::endl;
+                std::cout << "offset: " << offset << ","
+                          << " cameraId: " << cameraInfos[cameraIndex]->id << ","
+                          << " imuId: " << imuInfos[imuIndex]->id << ","<<"newest cameraId: "<<cameraId<<",newest imuId: "<<imuId
+                          << " imu-camera time difference(ms):"
+                          << std::chrono::duration_cast<std::chrono::nanoseconds>(
+                                 cameraInfos[cameraIndex]->time - imuInfos[imuIndex]->time
+                             )
+                                 .count()
+                        / (double)1000000
+                          << std::endl;
             }
         }
     } };

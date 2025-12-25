@@ -183,7 +183,7 @@ bool Imu::validate_and_extract(const uint8_t* frame, uint16_t payload_len) {
             // 检查UTC_TIME标志位（第11位，0=已同步）
             bool utc_time_synced = ((data.status & (1 << 11)) == 0);
             utc_synced = utc_time_synced;
-
+++frames_since_trigger;
             // 检查SOUT_PULSE标志位（第12位）
             if (data.status & (1 << 12)) {
                 frame_count++;
@@ -212,9 +212,13 @@ bool Imu::validate_and_extract(const uint8_t* frame, uint16_t payload_len) {
                 } else {
                     std::cout << "\n  └─ Local Time: " << data.system_time << " ms (等待同步...)";
                 }
-                syncer->addIMUFrame(std::make_shared<Syncer::ImuInfo>(data, data.system_time));
+                frames_since_trigger = 0;
+                
 
-                std::cout << std::endl;
+                // std::cout << std::endl;
+            }
+            if (frames_since_trigger == 1) {
+                syncer->addIMUFrame(std::make_shared<Syncer::ImuInfo>(data, data.system_time));
             }
             return true;
         }
