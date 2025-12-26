@@ -3,6 +3,7 @@
 #include <camera_imu_bridge/ImuSerial.hpp>
 #include <fmt/format.h>
 #include <memory>
+#include <iomanip>
 namespace helios_cv {
 void ImuSerial::calculate_crc16(uint16_t* crc, const uint8_t* buf, uint32_t len) {
     uint32_t crc_val = *crc;
