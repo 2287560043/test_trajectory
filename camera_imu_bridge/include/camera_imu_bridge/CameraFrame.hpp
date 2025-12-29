@@ -1,22 +1,24 @@
 #pragma once
-#include <chrono>
 #include <CameraDefine.h>
+#include <chrono>
 #include <cstring>
 struct CameraFrame {
-    std::chrono::high_resolution_clock::time_point time_;
-    uint64_t id_;
-    int64_t frame_timestamp_ms_;
-    tSdkFrameHead head_;
-    BYTE* buffer_;
+    std::chrono::high_resolution_clock::time_point time;
+    uint64_t id;
+    int64_t frame_timestamp_ms;
+    tSdkFrameHead head;
+    BYTE* buffer;
     CameraFrame(tSdkFrameHead* head, BYTE* buffer, int64_t frame_timestamp_ms):
-        time_(std::chrono::high_resolution_clock::now()),
-        frame_timestamp_ms_(frame_timestamp_ms),
-        head_(*head) {
+        time(std::chrono::high_resolution_clock::now()),
+        frame_timestamp_ms(frame_timestamp_ms),
+        head(*head) {
         auto size = head->uBytes;
-        buffer = new BYTE[size];
-        std::memcpy(buffer_, buffer, size);
+        this->buffer = new BYTE[size];
+        std::memcpy(this->buffer, buffer, size);
     }
     ~CameraFrame() {
-        delete[] buffer_;
+        delete[] buffer;
     }
+    CameraFrame(const CameraFrame&) = delete;
+    CameraFrame& operator=(const CameraFrame&) = delete;
 };

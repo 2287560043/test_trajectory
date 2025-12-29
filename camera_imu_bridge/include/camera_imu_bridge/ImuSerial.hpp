@@ -8,29 +8,28 @@ namespace helios_cv {
 class ImuSerial: public Imu {
 public:
     ImuSerial(
-        std::function<void(const LogLevel, const std::string&)> logCallback,
-        std::function<void(std::shared_ptr<ImuFrame>,int frames_since_trigger)> frameCallback
+        std::function<void(const LogLevel, const std::string&)> log_callback,
+        std::function<void(std::shared_ptr<ImuFrame>, int)> frame_callback
     );
-     ~ImuSerial() override;
+    ~ImuSerial() override;
 
 private:
-    bool open(const std::string& port);
-    void start_read();
     template<typename... Args>
-    void log(const LogLevel logLevel, const std::string& fmt, Args... args);
-    uint8_t calc_nmea_checksum(const std::string& sentence);
-    static void calculate_crc16(uint16_t* crc, const uint8_t* buf, uint32_t len);
-    static uint16_t read_u16(const uint8_t* p);
-    void set_rts_physical(bool physical_high);
-    std::string generate_gprmc();
-    uint32_t get_utc_ms_of_day();
-    std::string generate_gprmc_for_time(std::chrono::system_clock::time_point target_time);
-    void sync_loop();
-    bool validate_and_extract(const uint8_t* frame, uint16_t payload_len);
-    void parse_data(const uint8_t* data, size_t len);
+    void log(const LogLevel log_level, const std::string& fmt, Args... args);
+    bool open(const std::string& port);
+    void startRead();
+    uint8_t calculateNmeaChecksum(const std::string& sentence);
+    static void calculateCrc16(uint16_t* crc, const uint8_t* buf, uint32_t len);
+    static uint16_t readU16(const uint8_t* p);
+    void setRtsPhysical(bool physical_high);
+    uint32_t getUtcMillisecondsOfDay();
+    std::string generateGprmcTime(std::chrono::system_clock::time_point target_time);
+    void syncLoop();
+    bool validateAndExtract(const uint8_t* frame, uint16_t payload_len);
+    void parseData(const uint8_t* data, size_t len);
 
-    std::function<void(const LogLevel, const std::string&)> logCallback_;
-    std::function<void(std::shared_ptr<ImuFrame>,int frames_since_trigger)> frameCallback_;
+    std::function<void(const LogLevel, const std::string&)> log_callback_;
+    std::function<void(std::shared_ptr<ImuFrame>, int frames_since_trigger)> frame_callback_;
     std::atomic<bool> sync_enabled_ { true };
     std::atomic<bool> utc_synced_ { false };
     std::atomic<bool> imu_ready_ { false };
@@ -43,7 +42,7 @@ private:
 
     std::vector<uint8_t> read_buffer_;
     std::vector<uint8_t> parse_buffer_;
-    size_t parse_pos = 0;
+    size_t parse_pos_ = 0;
 
     std::atomic<bool> last_was_trigger_ { false };
     std::atomic<size_t> frames_since_trigger_ { 0 };

@@ -43,7 +43,7 @@ generate_parameter_library(camera_parameters
 ament_auto_add_library(camera_imu_bridge SHARED
     src/CameraImuBridgeNode.cpp
     src/Camera.cpp
-    src/Imu.cpp
+    src/ImuFactory.cpp
     src/ImuSerial.cpp
     src/ImuFtd2xx.cpp
     src/Syncer.cpp

@@ -1,11 +1,11 @@
-#include "camera_imu_bridge/LogLevel.hpp"
 #include <camera_imu_bridge/ImuFrame.hpp>
 #include <camera_imu_bridge/ImuSerial.hpp>
+#include <camera_imu_bridge/LogLevel.hpp>
 #include <fmt/format.h>
-#include <memory>
 #include <iomanip>
+#include <memory>
 namespace helios_cv {
-void ImuSerial::calculate_crc16(uint16_t* crc, const uint8_t* buf, uint32_t len) {
+void ImuSerial::calculateCrc16(uint16_t* crc, const uint8_t* buf, uint32_t len) {
     uint32_t crc_val = *crc;
     for (uint32_t j = 0; j < len; ++j) {
         uint32_t byte = buf[j];
@@ -20,13 +20,13 @@ void ImuSerial::calculate_crc16(uint16_t* crc, const uint8_t* buf, uint32_t len)
     *crc = crc_val;
 }
 
-uint16_t ImuSerial::read_u16(const uint8_t* p) {
+uint16_t ImuSerial::readU16(const uint8_t* p) {
     uint16_t u;
     std::memcpy(&u, p, 2);
     return u;
 }
 
-void ImuSerial::set_rts_physical(bool physical_high) {
+void ImuSerial::setRtsPhysical(bool physical_high) {
     int fd = serial_.native_handle();
     int status;
     ioctl(fd, TIOCMGET, &status);
@@ -39,7 +39,7 @@ void ImuSerial::set_rts_physical(bool physical_high) {
     ioctl(fd, TIOCMSET, &status);
 }
 
-uint8_t ImuSerial::calc_nmea_checksum(const std::string& sentence) {
+uint8_t ImuSerialCcalculateNmeaChecksum(const std::string& sentence) {
     uint8_t checksum = 0;
     for (size_t i = 1; i < sentence.length(); ++i) {
         checksum ^= sentence[i];
@@ -47,29 +47,7 @@ uint8_t ImuSerial::calc_nmea_checksum(const std::string& sentence) {
     return checksum;
 }
 
-std::string ImuSerial::generate_gprmc() {
-    auto now = std::chrono::system_clock::now();
-    auto time_t_now = std::chrono::system_clock::to_time_t(now);
-    auto ms = std::chrono::duration_cast<std::chrono::milliseconds>(now.time_since_epoch()) % 1000;
-
-    std::tm tm_utc;
-    gmtime_r(&time_t_now, &tm_utc);
-
-    std::ostringstream nmea;
-    nmea << "$GPRMC," << std::setfill('0') << std::setw(2) << tm_utc.tm_hour << std::setw(2)
-         << tm_utc.tm_min << std::setw(2) << tm_utc.tm_sec << "." << std::setw(2)
-         << (ms.count() / 10) << ",A,3955.1234,N,11620.5678,E,0.0,0.0," << std::setw(2)
-         << tm_utc.tm_mday << std::setw(2) << (tm_utc.tm_mon + 1) << std::setw(2)
-         << (tm_utc.tm_year % 100) << ",,,A";
-
-    uint8_t checksum = calc_nmea_checksum(nmea.str());
-    nmea << "*" << std::hex << std::uppercase << std::setw(2) << static_cast<int>(checksum)
-         << "\r\n";
-
-    return nmea.str();
-}
-
-uint32_t ImuSerial::get_utc_ms_of_day() {
+uint32_t ImuSerial::getUtcMillisecondsOfDay() {
     auto now = std::chrono::system_clock::now();
     auto time_t_now = std::chrono::system_clock::to_time_t(now);
     std::tm tm_utc;
@@ -81,11 +59,8 @@ uint32_t ImuSerial::get_utc_ms_of_day() {
     return ms_of_day + ms.count();
 }
 
-std::string ImuSerial::generate_gprmc_for_time(std::chrono::system_clock::time_point target_time) {
+std::string ImuSerial::generateGprmcTime(std::chrono::system_clock::time_point target_time) {
     auto time_t_target = std::chrono::system_clock::to_time_t(target_time);
-    // auto ms = std::chrono::duration_cast<std::chrono::milliseconds>(target_time.time_since_epoch())
-    //     % 1000;
-    //
     std::tm tm_utc;
     gmtime_r(&time_t_target, &tm_utc);
 
@@ -95,14 +70,14 @@ std::string ImuSerial::generate_gprmc_for_time(std::chrono::system_clock::time_p
          << ",A,3955.1234,N,11620.5678,E,0.0,0.0," << std::setw(2) << tm_utc.tm_mday << std::setw(2)
          << (tm_utc.tm_mon + 1) << std::setw(2) << (tm_utc.tm_year % 100) << ",,,A";
 
-    uint8_t checksum = calc_nmea_checksum(nmea.str());
+    uint8_t checksum = calculateNmeaChecksum(nmea.str());
     nmea << "*" << std::hex << std::uppercase << std::setw(2) << static_cast<int>(checksum)
          << "\r\n";
 
     return nmea.str();
 }
 
-void ImuSerial::sync_loop() {
+void ImuSerial::syncLoop() {
     while (!imu_ready_ && sync_enabled_) {
         std::this_thread::sleep_for(std::chrono::milliseconds(100));
     }
@@ -119,7 +94,7 @@ void ImuSerial::sync_loop() {
             std::chrono::system_clock::time_point(std::chrono::milliseconds(next_second_ms));
 
         // 预先生成GPRMC (使用目标时间)
-        std::string gprmc = generate_gprmc_for_time(target_time_t);
+        std::string gprmc = generateGprmcTime(target_time_t);
 
         // 高精度等待
         auto wait_duration = std::chrono::milliseconds(next_second_ms) - now_ms;
@@ -129,9 +104,9 @@ void ImuSerial::sync_loop() {
             break;
 
         // 产生上升沿
-        set_rts_physical(false);
+        setRtsPhysical(false);
         std::this_thread::sleep_for(std::chrono::microseconds(10));
-        set_rts_physical(true);
+        setRtsPhysical(true);
 
         // 立即发送预先生成的GPRMC
         boost::asio::write(serial_, boost::asio::buffer(gprmc));
@@ -139,15 +114,15 @@ void ImuSerial::sync_loop() {
         // ... 打印信息
 
         std::this_thread::sleep_for(std::chrono::milliseconds(50));
-        set_rts_physical(false);
+        setRtsPhysical(false);
     }
 }
 
-bool ImuSerial::validate_and_extract(const uint8_t* frame, uint16_t payload_len) {
+bool ImuSerial::validateAndExtract(const uint8_t* frame, uint16_t payload_len) {
     uint16_t crc = 0;
-    calculate_crc16(&crc, frame, 4);
-    calculate_crc16(&crc, frame + 6, payload_len);
-    if (crc != read_u16(frame + 4))
+    calculateCrc16(&crc, frame, 4);
+    calculateCrc16(&crc, frame + 6, payload_len);
+    if (crc != readU16(frame + 4))
         return false;
 
     const uint8_t* payload = frame + 6;
@@ -162,7 +137,6 @@ bool ImuSerial::validate_and_extract(const uint8_t* frame, uint16_t payload_len)
             }
 
             // 收到数据包，立即获取PC本地UTC时间
-            uint32_t pc_recv_time_ms = get_utc_ms_of_day();
 
             // 检查UTC_TIME标志位（第11位，0=已同步）
             bool utc_time_synced = ((data.status & (1 << 11)) == 0);
@@ -170,79 +144,61 @@ bool ImuSerial::validate_and_extract(const uint8_t* frame, uint16_t payload_len)
             ++frames_since_trigger_;
             // 检查SOUT_PULSE标志位（第12位）
             if (data.status & (1 << 12)) {
-                if (utc_time_synced) {
-                    // 计算同步误差：IMU时间 - PC时间
-                    int32_t sync_error = static_cast<int32_t>(data.system_time)
-                        - static_cast<int32_t>(pc_recv_time_ms);
-
-                    // 处理跨天的情况
-                    if (sync_error > 43200000) {
-                        sync_error -= 86400000;
-                    } else if (sync_error < -43200000) {
-                        sync_error += 86400000;
-                    }
-
-                } else {
-                    log(LogLevel::Info,
-                        "\n  └─ Local Time: %llu ms (等待同步...)\n",
-                        data.system_time);
-                }
                 frames_since_trigger_ = 0;
             }
-            frameCallback_(std::make_shared<ImuFrame>(data),frames_since_trigger_);
+            frame_callback_(std::make_shared<ImuFrame>(data), frames_since_trigger_);
             return true;
         }
     }
     return false;
 }
 
-void ImuSerial::parse_data(const uint8_t* data, size_t len) {
-    if (parse_pos + len > parse_buffer_.size()) {
+void ImuSerial::parseData(const uint8_t* data, size_t len) {
+    if (parse_pos_ + len > parse_buffer_.size()) {
         std::memmove(
             parse_buffer_.data(),
-            parse_buffer_.data() + (parse_pos > 2048 ? parse_pos - 2048 : 0),
-            parse_pos > 2048 ? 2048 : parse_pos
+            parse_buffer_.data() + (parse_pos_ > 2048 ? parse_pos_ - 2048 : 0),
+            parse_pos_ > 2048 ? 2048 : parse_pos_
         );
-        parse_pos = parse_pos > 2048 ? 2048 : parse_pos;
+        parse_pos_ = parse_pos_ > 2048 ? 2048 : parse_pos_;
     }
 
-    std::memcpy(parse_buffer_.data() + parse_pos, data, len);
-    parse_pos += len;
+    std::memcpy(parse_buffer_.data() + parse_pos_, data, len);
+    parse_pos_ += len;
 
     size_t i = 0;
-    while (i + 6 <= parse_pos) {
+    while (i + 6 <= parse_pos_) {
         if (parse_buffer_[i] == 0x5A && parse_buffer_[i + 1] == 0xA5) {
-            uint16_t payload_len = read_u16(parse_buffer_.data() + i + 2);
+            uint16_t payload_len = readU16(parse_buffer_.data() + i + 2);
             size_t frame_size = 6 + payload_len;
 
-            if (payload_len > 1024 || i + frame_size > parse_pos) {
+            if (payload_len > 1024 || i + frame_size > parse_pos_) {
                 if (payload_len > 1024)
                     i++;
                 break;
             }
 
-            validate_and_extract(parse_buffer_.data() + i, payload_len);
+            validateAndExtract(parse_buffer_.data() + i, payload_len);
             i += frame_size;
         } else {
             i++;
         }
     }
 
-    if (i < parse_pos) {
-        std::memmove(parse_buffer_.data(), parse_buffer_.data() + i, parse_pos - i);
-        parse_pos -= i;
+    if (i < parse_pos_) {
+        std::memmove(parse_buffer_.data(), parse_buffer_.data() + i, parse_pos_ - i);
+        parse_pos_ -= i;
     } else {
-        parse_pos = 0;
+        parse_pos_ = 0;
     }
 }
 
 ImuSerial::ImuSerial(
-    std::function<void(const LogLevel, const std::string&)> logCallback,
-    std::function<void(std::shared_ptr<ImuFrame>,int frames_since_trigger)> frameCallback
+    std::function<void(const LogLevel, const std::string&)> log_callback,
+    std::function<void(std::shared_ptr<ImuFrame>, int frames_since_trigger)> frame_callback
 ):
-    Imu(logCallback, frameCallback),
-    logCallback_(logCallback),
-    frameCallback_(frameCallback),
+    log_callback_(log_callback),
+    frame_callback_(frame_callback),
     serial_(io_service_),
     read_buffer_(1024 * 1024),
     parse_buffer_(2 * 1024 * 1024) {
@@ -266,7 +222,7 @@ bool ImuSerial::open(const std::string& port) {
             )
         );
 
-        set_rts_physical(false);
+        setRtsPhysical(false);
 
         log(LogLevel::Info, "✓ 串口已打开");
 
@@ -277,10 +233,10 @@ bool ImuSerial::open(const std::string& port) {
 
         // 启动IO线程
         io_thread_ = std::thread([this]() { io_service_.run(); });
-        start_read();
+        startRead();
 
         // 启动时间同步线程
-        sync_thread_ = std::thread([this]() { sync_loop(); });
+        sync_thread_ = std::thread([this]() { syncLoop(); });
 
         return true;
     } catch (const std::exception& e) {
@@ -289,21 +245,21 @@ bool ImuSerial::open(const std::string& port) {
     }
 }
 
-void ImuSerial::start_read() {
+void ImuSerial::startRead() {
     serial_.async_read_some(
         boost::asio::buffer(read_buffer_),
         [this](const boost::system::error_code& error, size_t bytes) {
             if (!error && bytes > 0) {
-                parse_data(read_buffer_.data(), bytes);
-                start_read();
+                parseData(read_buffer_.data(), bytes);
+                startRead();
             }
         }
     );
 }
 template<typename... Args>
-void ImuSerial::log(const LogLevel logLevel, const std::string& fmt, Args... args) {
-    if (logCallback_)
-        logCallback_(logLevel, fmt::format(fmt::runtime(fmt), args...));
+void ImuSerial::log(const LogLevel log_level, const std::string& fmt, Args... args) {
+    if (log_callback_)
+        log_callback_(log_level, fmt::format(fmt::runtime(fmt), args...));
 }
 
 ImuSerial::~ImuSerial() {
@@ -316,7 +272,7 @@ ImuSerial::~ImuSerial() {
         io_thread_.join();
 
     if (serial_.is_open()) {
-        set_rts_physical(false);
+        setRtsPhysical(false);
     }
 }
 } // namespace helios_cv

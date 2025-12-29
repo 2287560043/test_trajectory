@@ -1,5 +1,4 @@
 #pragma once
-#include "CameraDefine.h"
 #include <camera_imu_bridge/CameraFrame.hpp>
 #include <camera_imu_bridge/CameraParams.hpp>
 #include <camera_imu_bridge/LogLevel.hpp>
@@ -12,10 +11,10 @@ namespace helios_cv {
     class Camera {
     public:
         explicit Camera(
-            std::function<void(const LogLevel, const std::string&)> logCallback,
-            std::function<void(std::shared_ptr<CameraFrame>)> frameCallback
+            std::function<void(const LogLevel, const std::string&)> log_callback,
+            std::function<void(std::shared_ptr<CameraFrame>)> frame_callback
         );
-        void processFrame(std::shared_ptr<CameraFrame> cameraFrame, BYTE* output);
+        void processFrame(std::shared_ptr<CameraFrame> camera_frame, BYTE* output);
         void setParams(const cameraParams& params);
         ~Camera();
 
@@ -23,14 +22,14 @@ namespace helios_cv {
         bool initCamera();
         template<typename T>
         T clampToRange(const std::string& name, T val, T min, T max);
-        void setupFPSTimer();
+        void setupFpsTimer();
         bool startCamera();
         static void frameCallback(CameraHandle hCam, BYTE* buf, tSdkFrameHead* head, PVOID ctx);
         template<typename... Args>
-        void log(const LogLevel logLevel, const std::string& fmt, Args... args);
+        void log(const LogLevel log_level, const std::string& fmt, Args... args);
 
-        std::function<void(const LogLevel, const std::string&)> logCallback_;
-        std::function<void(std::shared_ptr<CameraFrame>)> frameCallback_;
+        std::function<void(const LogLevel, const std::string&)> log_callback_;
+        std::function<void(std::shared_ptr<CameraFrame>)> frame_callback_;
         int h_camera_ { 0 };
         tSdkCameraCapbility capability_;
         int img_width_ { 0 }, img_height_ { 0 };
