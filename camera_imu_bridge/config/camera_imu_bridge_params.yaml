@@ -28,7 +28,7 @@ camera_imu_bridge:
       
     analog_gain:
       type: int
-      default_value: 64
+      default_value: 100
       description: "模拟增益"
       read_only: false
       
@@ -60,7 +60,7 @@ camera_imu_bridge:
       
     gamma:
       type: int
-      default_value: 32
+      default_value: 100
       description: "伽马"
       read_only: false
   
