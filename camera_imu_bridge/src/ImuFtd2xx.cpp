@@ -182,7 +182,7 @@ bool ImuFtd2xx::validateAndExtract(const uint8_t* frame, uint16_t payload_len) {
                 frame_count_++;
                 frames_since_trigger_ = 0;
             }
-            log(LogLevel::Info, "validateAndExtract");
+            log(LogLevel::Info, "validateAndExtract2");
             frame_callback_(std::make_shared<ImuFrame>(data), frames_since_trigger_);
             return true;
         }
