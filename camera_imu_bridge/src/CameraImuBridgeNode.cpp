@@ -36,6 +36,7 @@ CameraImuBridgeNode::CameraImuBridgeNode(const rclcpp::NodeOptions& options):
         business.imu_type,
         log_callback_,
         [this](std::shared_ptr<ImuFrame> imu_frame, int frames_since_trigger) {
+            RCLCPP_INFO(get_logger(), "imuCallbcak");
             syncer_->onImuFrame(imu_frame, frames_since_trigger);
         }
     );
