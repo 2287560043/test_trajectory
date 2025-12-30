@@ -244,7 +244,7 @@ def generate_launch_description():
                 ComposableNode(
                     package='camera_imu_bridge',
                     plugin='helios_cv::CameraImuBridgeNode',
-                    name='camera_imu_syncer',
+                    name='camera_imu_bridge',
                     parameters=[{
                         'camera_name': 'mv_camera',
                         'exposure_time': 2000,
