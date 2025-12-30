@@ -159,6 +159,7 @@ std::string ImuFtd2xx::generateGprmcTime(std::chrono::system_clock::time_point t
 }
 
 bool ImuFtd2xx::validateAndExtract(const uint8_t* frame, uint16_t payload_len) {
+    log(LogLevel::Info, "validateAndExtract");
     uint16_t crc = 0;
     calculateCrc16(&crc, frame, 4);
     calculateCrc16(&crc, frame + 6, payload_len);
