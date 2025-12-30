@@ -28,8 +28,7 @@ void Syncer::setParams(const SyncerParams& params) {
 }
 
 void Syncer::onImuFrame(std::shared_ptr<ImuFrame> imu_frame, int frames_since_trigger) {
-    if (frames_since_trigger == params_.imu_frame_since_trigger) 
-    {
+    if (frames_since_trigger == params_.imu_frame_since_trigger) {
         imu_frame->id = imu_frame_id_;
         imu_frames_[imu_frame_id_] = imu_frame;
         ++imu_frame_id_;
@@ -40,11 +39,11 @@ void Syncer::onCameraFrame(std::shared_ptr<CameraFrame> camera_frame) {
     camera_frame->id = camera_frame_id_;
     camera_frames_[camera_frame_id_] = camera_frame;
     if (sync_ready_) {
+        processAndPublishSyncedFrame(camera_frame_id_ % 10);
+    } else {
         if (camera_frame_id_ > 11) {
             trySync();
         }
-    } else {
-        processAndPublishSyncedFrame(camera_frame_id_ % 10);
     }
     ++camera_frame_id_;
     checkStatus();
@@ -74,7 +73,9 @@ void Syncer::trySync() {
             }
         }
         auto average_time = time_sum / calculate_count;
-        if (calculate_count != 0 && average_time > params_.camera_imu_time_difference_us.min && average_time < params_.camera_imu_time_difference_us.max) {
+        if (calculate_count != 0 && average_time > params_.camera_imu_time_difference_us.min
+            && average_time < params_.camera_imu_time_difference_us.max)
+        {
             sync_ready_ = true;
             return;
         }
@@ -117,7 +118,9 @@ void Syncer::checkStatus() {
             }
         }
         auto average_time = time_sum / calculate_count;
-        if (calculate_count != 0 && average_time > params_.camera_imu_time_difference_us.min && average_time < params_.camera_imu_time_difference_us.max) {
+        if (calculate_count != 0 && average_time > params_.camera_imu_time_difference_us.min
+            && average_time < params_.camera_imu_time_difference_us.max)
+        {
         } else {
             camera_frame_id_ = 0;
             imu_frame_id_ = 0;
@@ -129,12 +132,12 @@ void Syncer::checkStatus() {
     }
 }
 
-void Syncer::processAndPublishSyncedFrame(int cameraFrameIndex) {
-    auto camera_id = camera_frames_[cameraFrameIndex]->id;
+void Syncer::processAndPublishSyncedFrame(int camera_frame_index) {
+    auto camera_id = camera_frames_[camera_frame_index]->id;
     auto imu_id = camera_id - offset_;
     if (camera_id == camera_frame_id_ && imu_frames_[imu_id]->id == camera_id - offset_) {
         auto imu_frame_index = imu_id % 10;
-        camera_imu_synced_index_ = (static_cast<uint16_t>(cameraFrameIndex) << 8) | imu_frame_index;
+        camera_imu_synced_index_ = (static_cast<uint16_t>(camera_frame_index) << 8) | imu_frame_index;
         camera_imu_synced_index_.notify_one();
     }
 };
