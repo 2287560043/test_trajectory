@@ -126,8 +126,8 @@ DetectorNode::DetectorNode(const rclcpp::NodeOptions& options):
     //     this->get_node_clock_interface(),
     //     std::chrono::duration<int>(0)
     // );
-    // image_sub_.registerCallback(
-    //     &DetectorNode::armor_image_callback, this);
+    image_sub_.registerCallback(
+        &DetectorNode::armor_image_callback, this);
     
     // Default register armor callback
     // tf2_filter_->registerCallback(&DetectorNode::armor_image_callback, this);

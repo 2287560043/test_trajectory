@@ -5,7 +5,7 @@
 namespace helios_cv {
 CameraImuBridgeNode::CameraImuBridgeNode(const rclcpp::NodeOptions& options):
     Node("camera_imu_bridge_node", options) {
-    image_pub_ = create_publisher<sensor_msgs::msg::Image>("image_raw_test", 10);
+    image_pub_ = create_publisher<sensor_msgs::msg::Image>("image_raw", 10);
     info_pub_ = create_publisher<sensor_msgs::msg::CameraInfo>("camera_info", 10);
     tf_broadcaster_ = std::make_unique<tf2_ros::TransformBroadcaster>(*this);
     param_listener_ =
@@ -15,11 +15,11 @@ CameraImuBridgeNode::CameraImuBridgeNode(const rclcpp::NodeOptions& options):
     auto cameraName = this->declare_parameter("camera_name", "mv_camera");
     std::unique_ptr<camera_info_manager::CameraInfoManager> cameraInfoManager =
         std::make_unique<camera_info_manager::CameraInfoManager>(this, cameraName);
+
     auto cameraInfoUrl = this->declare_parameter(
         "camera_info_url",
         "package://camera_imu_bridge/config/camera_info.yaml"
     );
-    sensor_msgs::msg::CameraInfo cameraInfoMsg;
 
     if (cameraInfoManager->validateURL(cameraInfoUrl)) {
         cameraInfoManager->loadCameraInfo(cameraInfoUrl);
