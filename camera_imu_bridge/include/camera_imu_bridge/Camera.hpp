@@ -15,7 +15,7 @@ namespace helios_cv {
             std::function<void(std::shared_ptr<CameraFrame>)> frame_callback
         );
         void processFrame(std::shared_ptr<CameraFrame> camera_frame, BYTE* output);
-        void setParams(const cameraParams& params);
+        void setParams(const CameraParams& params);
         ~Camera();
 
     private:
@@ -33,7 +33,7 @@ namespace helios_cv {
         int h_camera_ { 0 };
         tSdkCameraCapbility capability_;
         int img_width_ { 0 }, img_height_ { 0 };
-        cameraParams params_;
+        CameraParams params_;
         std::atomic<bool> run_fps_timer_ { 0 };
         std::thread fps_timer_;
         std::atomic<uint32_t> frame_cnt_ { 0 };

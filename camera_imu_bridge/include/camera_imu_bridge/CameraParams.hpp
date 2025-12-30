@@ -1,6 +1,6 @@
 #pragma once
 #include <string>
-struct cameraParams {
+struct CameraParams {
     struct RgbGain {
         int r, g, b;
     };

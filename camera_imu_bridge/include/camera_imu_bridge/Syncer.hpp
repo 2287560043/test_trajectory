@@ -1,5 +1,6 @@
 #pragma once
 #include "camera_imu_bridge/LogLevel.hpp"
+#include "camera_imu_bridge/SyncerParams.hpp"
 #include <atomic>
 #include <camera_imu_bridge/CameraFrame.hpp>
 #include <camera_imu_bridge/ImuFrame.hpp>
@@ -18,6 +19,7 @@ public:
     );
     void onImuFrame(std::shared_ptr<ImuFrame> imu_frame, int frames_since_trigger);
     void onCameraFrame(std::shared_ptr<CameraFrame> camera_frame);
+    void setParams(const SyncerParams& params);
     ~Syncer();
 
 private:
@@ -32,12 +34,13 @@ private:
     RingArray<std::shared_ptr<ImuFrame>, 10> imu_frames_;
     RingArray<std::shared_ptr<CameraFrame>, 10> camera_frames_;
     int offset_ { -5 };
-    std::atomic<bool> running_;
-    std::atomic<bool> sync_ready_;
+    std::atomic<bool> running_ { true };
+    std::atomic<bool> sync_ready_ { false };
     std::atomic<uint16_t> camera_imu_synced_index_ { 65535 };
     std::thread process_and_publish_synced_frame_thread_;
     std::function<void(const LogLevel, const std::string&)> log_callback_;
     std::function<void(std::shared_ptr<CameraFrame>, std::shared_ptr<ImuFrame>)>
         process_and_publish_synced_frame_callback_;
+    SyncerParams params_;
 };
 } // namespace helios_cv

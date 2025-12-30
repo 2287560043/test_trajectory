@@ -37,7 +37,7 @@ find_library(FTD2XX_LIBRARY
 )
 
 generate_parameter_library(camera_parameters
-  config/camera_params.yaml
+  config/camera_imu_bridge_params.yaml
 )
 
 ament_auto_add_library(camera_imu_bridge SHARED

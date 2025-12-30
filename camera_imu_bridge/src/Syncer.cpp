@@ -1,6 +1,7 @@
 #include "camera_imu_bridge/LogLevel.hpp"
 #include <camera_imu_bridge/Syncer.hpp>
 #include <fmt/format.h>
+#include <thread>
 namespace helios_cv {
 Syncer::Syncer(
     std::function<void(const LogLevel, const std::string&)> log_callback,
@@ -8,10 +9,26 @@ Syncer::Syncer(
         process_and_publish_synced_frame_callback
 ):
     log_callback_(log_callback),
-    process_and_publish_synced_frame_callback_(process_and_publish_synced_frame_callback) {}
+    process_and_publish_synced_frame_callback_(process_and_publish_synced_frame_callback) {
+    process_and_publish_synced_frame_thread_ =
+        std::thread { [this]() { processAndPublishSyncedFrameLoop(); } };
+}
+
+Syncer::~Syncer() {
+    running_ = false;
+    camera_imu_synced_index_ = 65534;
+    camera_imu_synced_index_.notify_all();
+    if (process_and_publish_synced_frame_thread_.joinable()) {
+        process_and_publish_synced_frame_thread_.join();
+    }
+}
+
+void Syncer::setParams(const SyncerParams& params) {
+    params_ = params;
+}
 
 void Syncer::onImuFrame(std::shared_ptr<ImuFrame> imu_frame, int frames_since_trigger) {
-    if (frames_since_trigger == 0) {
+    if (frames_since_trigger == params_.imu_frame_since_trigger) {
         imu_frame->id = imu_frame_id_;
         imu_frames_[imu_frame_id_] = imu_frame;
         ++imu_frame_id_;
@@ -56,7 +73,7 @@ void Syncer::trySync() {
             }
         }
         auto average_time = time_sum / calculate_count;
-        if (calculate_count != 0 && average_time > 1000000 && average_time < 10000000) {
+        if (calculate_count != 0 && average_time > params_.camera_imu_time_difference_us.min && average_time < params_.camera_imu_time_difference_us.max) {
             sync_ready_ = true;
             return;
         }
@@ -91,7 +108,7 @@ void Syncer::checkStatus() {
                     == camera_frames_[i]->id - offset_)
             {
                 time_sum +=
-                    std::chrono::duration_cast<std::chrono::nanoseconds>(
+                    std::chrono::duration_cast<std::chrono::microseconds>(
                         camera_frames_[i]->time - imu_frames_[camera_frames_[i]->id - offset_]->time
                     )
                         .count();
@@ -99,7 +116,7 @@ void Syncer::checkStatus() {
             }
         }
         auto average_time = time_sum / calculate_count;
-        if (calculate_count != 0 && average_time > 1000000 && average_time < 10000000) {
+        if (calculate_count != 0 && average_time > params_.camera_imu_time_difference_us.min && average_time < params_.camera_imu_time_difference_us.max) {
         } else {
             camera_frame_id_ = 0;
             imu_frame_id_ = 0;
@@ -128,7 +145,10 @@ void Syncer::processAndPublishSyncedFrameLoop() {
             camera_imu_index_old = camera_imu_synced_index_;
             auto camera_frame_index = (static_cast<uint8_t>(camera_imu_index_old >> 8) + 0) % 10;
             auto imu_frame_index = static_cast<uint8_t>(camera_imu_index_old & 0xFF);
-            process_and_publish_synced_frame_callback_(camera_frames_[camera_frame_index],imu_frames_[imu_frame_index]);
+            process_and_publish_synced_frame_callback_(
+                camera_frames_[camera_frame_index],
+                imu_frames_[imu_frame_index]
+            );
         }
     }
 }

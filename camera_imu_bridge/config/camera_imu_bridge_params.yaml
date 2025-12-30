@@ -1,0 +1,95 @@
+camera_imu_bridge:
+  camera:
+    camera_name:
+      type: string
+      default_value: "mv_camera"
+      read_only: true  
+    
+    config_file_path:
+      type: string
+      default_value: "package://camera_imu_bridge/camera_config/"
+      read_only: true  
+      
+    camera_info_url:
+      type: string
+      default_value: "package://camera_imu_bridge/config/camera_info.yaml"
+      read_only: true  
+      
+    print_fps:
+      type: bool
+      default_value: false
+      read_only: false
+    
+    exposure_time:
+      type: int
+      default_value: -1
+      description: "曝光时间(μs)"
+      read_only: false
+      
+    analog_gain:
+      type: int
+      default_value: -1
+      description: "模拟增益"
+      read_only: false
+      
+    rgb_gain:
+      r:
+        type: int
+        default_value: -1
+        description: "红增益"
+        read_only: false
+  
+      g:
+        type: int
+        default_value: -1
+        description: "绿增益"
+        read_only: false
+  
+      b:
+        type: int
+        default_value: -1
+        description: "蓝增益"
+        read_only: false
+        
+    saturation:
+      type: int
+      default_value: -1
+      description: "饱和度"
+      read_only: false
+  
+      
+    gamma:
+      type: int
+      default_value: -1
+      description: "伽马"
+      read_only: false
+  
+      
+    rotate:
+      type: bool
+      default_value: false
+      description: "旋转角度(0:0° 1:180°(实际api为2))"
+      read_only: false
+  imu:
+    type:
+      type: string
+      default_value: "ftd2xx"
+      description: "imu实现的种类有ftd2xx和serial两种"
+  syncer:
+    camera_imu_time_difference_us:
+      min:
+        type: int
+        default_value: 4000
+        description: "Camera与IMU时间差下限(μs,  camera_recevied_time - imu_recevied_time )"
+      max:
+        type: int
+        default_value: 8000
+        description: "Camera与IMU时间差上限(μs, camera_recevied_time - imu_recevied_time)"
+  
+    imu_frame_since_trigger:
+      type: int
+      default_value: 0
+      description: "选取触发帧后的第x帧"
+  
+
+

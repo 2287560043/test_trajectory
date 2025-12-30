@@ -8,10 +8,10 @@ std::unique_ptr<Imu> createImu(
     std::function<void(const LogLevel, const std::string&)> logCallback,
     std::function<void(std::shared_ptr<ImuFrame>, int)> frameCallback
 ) {
-    if (type == "Ftd2xx") {
+    if (type == "ftd2xx") {
         return std::make_unique<ImuFtd2xx>(logCallback, frameCallback);
     }
-    if (type == "Serial") {
+    if (type == "serial") {
         return std::make_unique<ImuSerial>(logCallback, frameCallback);
     }
     return nullptr;
