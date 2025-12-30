@@ -249,7 +249,7 @@ def generate_launch_description():
                         'camera_name': 'mv_camera',
                         'exposure_time': 2000,
                     }],
-                    extra_arguments=[{'use_intra_process_comms': True}]
+                    extra_arguments=[{'use_intra_process_comms': False}]
                 ),
                 
             ],

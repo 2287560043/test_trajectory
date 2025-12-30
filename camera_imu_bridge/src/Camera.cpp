@@ -299,6 +299,7 @@ void Camera::frameCallback(CameraHandle hCam, BYTE* buf, tSdkFrameHead* head, PV
         frame_timestamp_ms = frame_timestamp_ms % 86400000;
     }
     cam->frame_callback_(std::make_shared<CameraFrame>(head, buf, frame_timestamp_ms));
+    ++cam->frame_cnt_;
 }
 
 template<typename... Args>

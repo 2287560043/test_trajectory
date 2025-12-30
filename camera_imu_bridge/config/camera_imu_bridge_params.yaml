@@ -17,50 +17,50 @@ camera_imu_bridge:
       
     print_fps:
       type: bool
-      default_value: false
+      default_value: true
       read_only: false
     
     exposure_time:
       type: int
-      default_value: -1
+      default_value: 3000
       description: "曝光时间(μs)"
       read_only: false
       
     analog_gain:
       type: int
-      default_value: -1
+      default_value: 64
       description: "模拟增益"
       read_only: false
       
     rgb_gain:
       r:
         type: int
-        default_value: -1
+        default_value: 100
         description: "红增益"
         read_only: false
   
       g:
         type: int
-        default_value: -1
+        default_value: 100
         description: "绿增益"
         read_only: false
   
       b:
         type: int
-        default_value: -1
+        default_value: 100
         description: "蓝增益"
         read_only: false
         
     saturation:
       type: int
-      default_value: -1
+      default_value: 100
       description: "饱和度"
       read_only: false
   
       
     gamma:
       type: int
-      default_value: -1
+      default_value: 32
       description: "伽马"
       read_only: false
   
@@ -79,11 +79,11 @@ camera_imu_bridge:
     camera_imu_time_difference_us:
       min:
         type: int
-        default_value: 4000
+        default_value: 3000
         description: "Camera与IMU时间差下限(μs,  camera_recevied_time - imu_recevied_time )"
       max:
         type: int
-        default_value: 8000
+        default_value: 10000
         description: "Camera与IMU时间差上限(μs, camera_recevied_time - imu_recevied_time)"
   
     imu_frame_since_trigger:

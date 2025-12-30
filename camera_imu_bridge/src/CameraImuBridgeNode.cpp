@@ -44,6 +44,7 @@ CameraImuBridgeNode::CameraImuBridgeNode(const rclcpp::NodeOptions& options):
             syncer_->onCameraFrame(camera_frame);
         });
     camera_->setParams(business.camera);
+    syncer_->setParams(business.syncer);
 }
 
 std::function<void(LogLevel, const std::string&)> CameraImuBridgeNode::makeLogCallback() {

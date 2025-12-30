@@ -2,6 +2,8 @@
 #include <camera_imu_bridge/Syncer.hpp>
 #include <fmt/format.h>
 #include <thread>
+#include <iomanip>
+
 namespace helios_cv {
 Syncer::Syncer(
     std::function<void(const LogLevel, const std::string&)> log_callback,
@@ -34,12 +36,34 @@ void Syncer::onImuFrame(std::shared_ptr<ImuFrame> imu_frame, int frames_since_tr
         ++imu_frame_id_;
     }
 }
+std::string ms_to_utc_time(uint32_t total_ms) {
+    uint32_t total_seconds = total_ms / 1000;
+    uint32_t ms_part = total_ms % 1000;
 
+    uint8_t hours = (total_seconds / 3600) % 24;
+    uint8_t minutes = (total_seconds % 3600) / 60;
+    uint8_t seconds = total_seconds % 60;
+
+    std::ostringstream oss;
+    oss << std::setfill('0') << std::setw(2) << (int)hours << ":" << std::setw(2) << (int)minutes
+        << ":" << std::setw(2) << (int)seconds << "." << std::setw(3) << ms_part;
+    return oss.str();
+}
 void Syncer::onCameraFrame(std::shared_ptr<CameraFrame> camera_frame) {
     camera_frame->id = camera_frame_id_;
     camera_frames_[camera_frame_id_] = camera_frame;
     if (sync_ready_) {
-        processAndPublishSyncedFrame(camera_frame_id_ % 10);
+        
+log(LogLevel::Info, "IMU Time:       {}",ms_to_utc_time(imu_frames_[camera_frame_id_-offset_]->system_time));
+log(LogLevel::Info, "Camera Time:    {}", ms_to_utc_time(camera_frames_[camera_frame_id_]->frame_timestamp_ms));
+log(LogLevel::Info, "cameraId:       {}", camera_frame->id);
+log(LogLevel::Info, "imuId:          {}", camera_frame->id -offset_);
+log(LogLevel::Info, "offset:         {}", offset_);  
+log(LogLevel::Info, "time diffrence: {}", std::chrono::duration_cast<std::chrono::microseconds>(camera_frame->time - imu_frames_[camera_frame->id - offset_]->time).count()/1000.0);
+log(LogLevel::Info, "-----------------------------------");
+
+
+processAndPublishSyncedFrame(camera_frame_id_ % 10);
     } else {
         if (camera_frame_id_ > 11) {
             trySync();
@@ -73,6 +97,7 @@ void Syncer::trySync() {
             }
         }
         auto average_time = time_sum / calculate_count;
+        log(LogLevel::Info, "average: {}", average_time);
         if (calculate_count != 0 && average_time > params_.camera_imu_time_difference_us.min
             && average_time < params_.camera_imu_time_difference_us.max)
         {
@@ -82,6 +107,8 @@ void Syncer::trySync() {
         ++offset_;
     }
     log(LogLevel::Warn, "No suitable offset matched");
+    log(LogLevel::Warn, "min: {}, max: {}", params_.camera_imu_time_difference_us.min,
+        params_.camera_imu_time_difference_us.max);
 }
 
 void Syncer::checkStatus() {
