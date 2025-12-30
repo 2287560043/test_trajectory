@@ -65,7 +65,7 @@ void Syncer::trySync() {
                     == camera_frames_[i]->id - offset_)
             {
                 time_sum +=
-                    std::chrono::duration_cast<std::chrono::nanoseconds>(
+                    std::chrono::duration_cast<std::chrono::microseconds>(
                         camera_frames_[i]->time - imu_frames_[camera_frames_[i]->id - offset_]->time
                     )
                         .count();
