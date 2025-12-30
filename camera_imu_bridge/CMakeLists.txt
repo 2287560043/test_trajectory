@@ -86,10 +86,8 @@ install(
 
 install(
   DIRECTORY config
-  DESTINATION share/${project_name}
+  DESTINATION share/${PROJECT_NAME}
 )
 
-ament_auto_package(
-      INSTALL_TO_SHARE
-)
+ament_auto_package()
 
