@@ -373,7 +373,7 @@ bool ImuFtd2xx::initDevice() {
             if (FT_GetDeviceInfo(ft_handle_, &device_type, &device_id, serial, desc, NULL) == FT_OK)
             {
                 target_serial_number_ = serial;
-                log(LogLevel::Info, "[初始化] 序列号: %s", target_serial_number_.c_str());
+                log(LogLevel::Info, "[初始化] 序列号: {}", target_serial_number_.c_str());
             }
         }
     } else {
@@ -383,7 +383,7 @@ bool ImuFtd2xx::initDevice() {
     }
 
     if (status != FT_OK) {
-        log(LogLevel::Error, "[初始化] 打开失败，错误: %u", status);
+        log(LogLevel::Error, "[初始化] 打开失败，错误: {}", status);
         return false;
     }
 
