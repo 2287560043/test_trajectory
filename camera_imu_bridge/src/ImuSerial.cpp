@@ -240,7 +240,7 @@ bool ImuSerial::open(const std::string& port) {
 
         return true;
     } catch (const std::exception& e) {
-        log(LogLevel::Error, "打开串口失败: %s\n", e.what());
+        log(LogLevel::Error, "打开串口失败: {}\n", e.what());
         return false;
     }
 }

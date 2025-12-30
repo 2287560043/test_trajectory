@@ -397,7 +397,7 @@ bool ImuFtd2xx::initDevice() {
 
     UCHAR latency;
     FT_GetLatencyTimer(ft_handle_, &latency);
-    log(LogLevel::Info, "[init] 延迟定时器: %i ms", (int)latency);
+    log(LogLevel::Info, "[init] 延迟定时器: {} ms", (int)latency);
 
     FT_Purge(ft_handle_, FT_PURGE_RX | FT_PURGE_TX);
 

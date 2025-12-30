@@ -53,7 +53,7 @@ void Camera::setParams(const CameraParams& params) {
         );
         auto status = CameraSetExposureTime(h_camera_, val);
         log(LogLevel::Info,
-            "  exposure=%d, status=%s",
+            "  exposure={}, status={}",
             val,
             status == CAMERA_STATUS_SUCCESS ? "OK" : CameraGetErrorString(status));
     }
@@ -66,7 +66,7 @@ void Camera::setParams(const CameraParams& params) {
         );
         auto status = CameraSetAnalogGain(h_camera_, val);
         log(LogLevel::Info,
-            "  gain=%d, status=%s",
+            "  gain={}, status={}",
             val,
             status == CAMERA_STATUS_SUCCESS ? "OK" : CameraGetErrorString(status));
     }
@@ -79,7 +79,7 @@ void Camera::setParams(const CameraParams& params) {
         );
         auto status = CameraSetSaturation(h_camera_, val);
         log(LogLevel::Info,
-            "  saturation=%d, status=%s",
+            "  saturation={}, status={}",
             val,
             status == CAMERA_STATUS_SUCCESS ? "OK" : CameraGetErrorString(status));
     }
@@ -92,7 +92,7 @@ void Camera::setParams(const CameraParams& params) {
         );
         auto status = CameraSetGamma(h_camera_, val);
         log(LogLevel::Info,
-            "  gamma=%d, status=%s",
+            "  gamma={}, status={}",
             val,
             status == CAMERA_STATUS_SUCCESS ? "OK" : CameraGetErrorString(status));
     }
@@ -117,7 +117,7 @@ void Camera::setParams(const CameraParams& params) {
         );
         auto status = CameraSetGain(h_camera_, r, g, b);
         log(LogLevel::Info,
-            "  RGB=(%d,%d,%d), status=%s",
+            "  RGB=({},{},{}), status={}",
             r,
             g,
             b,
@@ -128,7 +128,7 @@ void Camera::setParams(const CameraParams& params) {
         int rot_val = val ? 2 : 0;
         auto status = CameraSetRotate(h_camera_, rot_val);
         log(LogLevel::Info,
-            "  rotate=%s, status=%s",
+            "  rotate={}, status={}",
             val ? "180°" : "0°",
             status == CAMERA_STATUS_SUCCESS ? "OK" : CameraGetErrorString(status));
     }
@@ -170,12 +170,12 @@ bool Camera::initCamera() {
         return false;
     }
 
-    log(LogLevel::Info, "Found: %s [%s]", dev_info.acProductName, dev_info.acSn);
+    log(LogLevel::Info, "Found: {} [{}]", dev_info.acProductName, dev_info.acSn);
 
     if (auto status = CameraInit(&dev_info, PARAM_MODE_BY_SN, 0, &h_camera_);
         status != CAMERA_STATUS_SUCCESS)
     {
-        log(LogLevel::Error, "Camera init failed: %s", CameraGetErrorString(status));
+        log(LogLevel::Error, "Camera init failed: {}", CameraGetErrorString(status));
         return false;
     }
 
@@ -195,11 +195,11 @@ bool Camera::initCamera() {
 
     log(LogLevel::Info,
 
-        "Exposure range: [%u, %u]μs",
+        "Exposure range: [{}, {}]μs",
         capability_.sExposeDesc.uiExposeTimeMin,
         capability_.sExposeDesc.uiExposeTimeMax);
     log(LogLevel::Info,
-        "Gain range: [%u, %u]",
+        "Gain range: [{}, {}]",
         capability_.sExposeDesc.uiAnalogGainMin,
         capability_.sExposeDesc.uiAnalogGainMax);
 
@@ -213,27 +213,27 @@ bool Camera::initCamera() {
     CameraGetGamma(h_camera_, &gam);
 
     log(LogLevel::Info, "=== Active Camera Parameters ===");
-    log(LogLevel::Info, "  Resolution: %dx%d", img_width_, img_height_);
-    log(LogLevel::Info, "  Exposure: %.0f μs", exp_time);
-    log(LogLevel::Info, "  Analog Gain: %d", gain);
-    log(LogLevel::Info, "  RGB Gain: R=%d G=%d B=%d", r, g, b);
-    log(LogLevel::Info, "  Saturation: %d", sat);
-    log(LogLevel::Info, "  Gamma: %d", gam);
-    log(LogLevel::Info, "  Rotate: %s", params_.rotate ? "180°" : "0°");
+    log(LogLevel::Info, "  Resolution: {}x{}", img_width_, img_height_);
+    log(LogLevel::Info, "  Exposure: {} μs", exp_time);
+    log(LogLevel::Info, "  Analog Gain: {}", gain);
+    log(LogLevel::Info, "  RGB Gain: R={} G={} B={}", r, g, b);
+    log(LogLevel::Info, "  Saturation: {}", sat);
+    log(LogLevel::Info, "  Gamma: {}", gam);
+    log(LogLevel::Info, "  Rotate: {}", params_.rotate ? "180°" : "0°");
     log(LogLevel::Info, "================================");
 
-    log(LogLevel::Info, "Camera ready: %dx%d", img_width_, img_height_);
+    log(LogLevel::Info, "Camera ready: {}x{}", img_width_, img_height_);
     return true;
 }
 
 template<typename T>
 T Camera::clampToRange(const std::string& name, T val, T min, T max) {
     if (val < min) {
-        log(LogLevel::Warn, "%s=%d < min(%d), clamped", name.c_str(), (int)val, (int)min);
+        log(LogLevel::Warn, "{}={} < min({}), clamped", name.c_str(), (int)val, (int)min);
         return min;
     }
     if (val > max) {
-        log(LogLevel::Warn, "%s=%d > max(%d), clamped", name.c_str(), (int)val, (int)max);
+        log(LogLevel::Warn, "{}={} > max({}), clamped", name.c_str(), (int)val, (int)max);
         return max;
     }
     return val;
@@ -245,7 +245,7 @@ void Camera::setupFpsTimer() {
         while (run_fps_timer_) {
             std::this_thread::sleep_for(std::chrono::seconds(2));
             uint32_t cnt = frame_cnt_.exchange(0);
-            log(LogLevel::Info, "FPS: %.1f", cnt / 2.0);
+            log(LogLevel::Info, "FPS: {}", cnt / 2.0);
         }
     } };
 }
