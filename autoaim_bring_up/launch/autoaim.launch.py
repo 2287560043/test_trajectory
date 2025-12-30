@@ -236,13 +236,13 @@ def generate_launch_description():
 
     return LaunchDescription([
         ComposableNodeContainer(
-            name='camera_imu_syncer_container',
+            name='camera_imu_bridge_container',
             namespace='',
             package='rclcpp_components',
             executable='component_container_mt',
             composable_node_descriptions=[
                 ComposableNode(
-                    package='camera_imu_syncer',
+                    package='camera_imu_bridge',
                     plugin='helios_cv::CameraImuBridgeNode',
                     name='camera_imu_syncer',
                     parameters=[{
