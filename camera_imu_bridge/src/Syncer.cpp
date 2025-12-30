@@ -28,7 +28,10 @@ void Syncer::setParams(const SyncerParams& params) {
 }
 
 void Syncer::onImuFrame(std::shared_ptr<ImuFrame> imu_frame, int frames_since_trigger) {
-    if (frames_since_trigger == params_.imu_frame_since_trigger) {
+    log(LogLevel::Info,"frames_since_trigger:{} , params:{}",frames_since_trigger,params_.imu_frame_since_trigger);
+    if (frames_since_trigger == params_.imu_frame_since_trigger) 
+    {
+        
         imu_frame->id = imu_frame_id_;
         imu_frames_[imu_frame_id_] = imu_frame;
         ++imu_frame_id_;
