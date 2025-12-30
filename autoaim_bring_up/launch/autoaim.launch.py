@@ -235,6 +235,27 @@ def generate_launch_description():
     )
 
     return LaunchDescription([
+        ComposableNodeContainer(
+            name='camera_container',
+            namespace='',
+            package='rclcpp_components',
+            executable='component_container_mt',
+            composable_node_descriptions=[
+                ComposableNode(
+                    package='camera_imu_syncer_node',
+                    plugin='helios_cv::CameraImuBridgeNode',
+                    name='camera_imu_syncer',
+                    parameters=[{
+                        'camera_name': 'mv_camera',
+                        'exposure_time': 2000,
+                    }],
+                    extra_arguments=[{'use_intra_process_comms': True}]
+                ),
+                
+            ],
+            output='both',
+        ),
+
         robot_state_publisher,
         #cam_detector,
         # delay_autoaim_bridge_node,
@@ -244,7 +265,7 @@ def generate_launch_description():
         # autoaim_debugger,
         delay_armor_tracker_node,
         delay_energy_tracker_node,
-        camera_imu_syncer,
+        # camera_imu_syncer,
         # node_tf2,
         # camera_recorder,
         # foxglove_bridge,
