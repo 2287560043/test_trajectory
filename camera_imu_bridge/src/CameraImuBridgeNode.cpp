@@ -17,7 +17,7 @@ CameraImuBridgeNode::CameraImuBridgeNode(const rclcpp::NodeOptions& options):
         std::make_unique<camera_info_manager::CameraInfoManager>(this, cameraName);
     auto cameraInfoUrl = this->declare_parameter(
         "camera_info_url",
-        "package://camera_imu_syncer/config/camera_info.yaml"
+        "package://camera_imu_bridge/config/camera_info.yaml"
     );
     sensor_msgs::msg::CameraInfo cameraInfoMsg;
 
