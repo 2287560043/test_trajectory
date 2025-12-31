@@ -90,7 +90,7 @@ private:
    *
    * @param image_msg recieved image msg from camera node
    */
-  void armor_image_callback(sensor_msgs::msg::Image::SharedPtr image_msg);
+  void armor_image_callback(sensor_msgs::msg::Image::UniquePtr image_msg);
 
   /**
    * @brief initialize detector as armor detector
@@ -111,10 +111,12 @@ private:
   // Subscriber with tf2 message_filter
   std::shared_ptr<tf2_ros::Buffer> tf2_buffer_;
   std::shared_ptr<tf2_ros::TransformListener> tf2_listener_;
-  message_filters::Subscriber<sensor_msgs::msg::Image> image_sub_;
-  std::shared_ptr<tf2_filter> tf2_filter_;
+  // message_filters::Subscriber<sensor_msgs::msg::Image> image_sub_;
+  // std::shared_ptr<tf2_filter> tf2_filter_;
 
+  rclcpp::Subscription<sensor_msgs::msg::Image>::SharedPtr image_sub_;
   // Serial part
+
   rclcpp::Subscription<autoaim_interfaces::msg::ReceiveData>::SharedPtr serial_sub_;
 
   // detectors

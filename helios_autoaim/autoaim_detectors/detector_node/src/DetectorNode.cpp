@@ -81,7 +81,7 @@ DetectorNode::DetectorNode(const rclcpp::NodeOptions& options):
     cam_info_sub_ = this->create_subscription<sensor_msgs::msg::CameraInfo>(
         node_namespace_ + "/camera_info",
         rclcpp::SensorDataQoS(),
-        [this](sensor_msgs::msg::CameraInfo::SharedPtr camera_info) {
+        [this](sensor_msgs::msg::CameraInfo::UniquePtr camera_info) {
             std::lock_guard<std::mutex> lock(detector_mutex_);
             cam_info_ = std::make_shared<sensor_msgs::msg::CameraInfo>(*camera_info);
             detector_->set_cam_info(*camera_info);
@@ -104,6 +104,17 @@ DetectorNode::DetectorNode(const rclcpp::NodeOptions& options):
             }
         }
     );
+    auto image_qos = rclcpp::QoS(1)
+                         .durability(RMW_QOS_POLICY_DURABILITY_VOLATILE)
+                         .reliability(RMW_QOS_POLICY_RELIABILITY_BEST_EFFORT);
+
+    image_sub_ = this->create_subscription<sensor_msgs::msg::Image>(
+        node_namespace_ + "/image_raw",
+        image_qos,
+        [this](sensor_msgs::msg::Image::UniquePtr image_msg) {
+            armor_image_callback(std::move(image_msg));
+        }
+    );
     // init tf2 utilities
     tf2_buffer_ = std::make_shared<tf2_ros::Buffer>(this->get_clock());
     // Create the timer interface before call to waitForTransform,
@@ -115,7 +126,7 @@ DetectorNode::DetectorNode(const rclcpp::NodeOptions& options):
     tf2_buffer_->setCreateTimerInterface(timer_interface);
     tf2_listener_ = std::make_shared<tf2_ros::TransformListener>(*tf2_buffer_);
     // subscriber and filter
-    image_sub_.subscribe(this, node_namespace_ + "/image_raw", rmw_qos_profile_sensor_data);
+    // image_sub_.subscribe(this, node_namespace_ + "/image_raw", rmw_qos_profile_sensor_data);
     // Register a callback with tf2_ros::MessageFilter to be called when transforms are available
     // tf2_filter_ = std::make_shared<tf2_filter>(
     //     image_sub_,
@@ -126,9 +137,8 @@ DetectorNode::DetectorNode(const rclcpp::NodeOptions& options):
     //     this->get_node_clock_interface(),
     //     std::chrono::duration<int>(0)
     // );
-    image_sub_.registerCallback(
-        &DetectorNode::armor_image_callback, this);
-    
+    // image_sub_.registerCallback(&DetectorNode::armor_image_callback, this);
+
     // Default register armor callback
     // tf2_filter_->registerCallback(&DetectorNode::armor_image_callback, this);
 
@@ -194,12 +204,12 @@ void DetectorNode::init_detectors() {
     }
 }
 
-void DetectorNode::armor_image_callback(sensor_msgs::msg::Image::SharedPtr image_msg) {
-
+void DetectorNode::armor_image_callback(sensor_msgs::msg::Image::UniquePtr image_msg) {
     // convert image msg to cv::Mat
     try {
-        image_ =
-            std::move(cv_bridge::toCvShare(image_msg, sensor_msgs::image_encodings::RGB8)->image);
+        image_ = std::move(
+            cv_bridge::toCvShare(std::move(image_msg), sensor_msgs::image_encodings::RGB8)->image
+        );
     } catch (const cv_bridge::Exception& e) {
         RCLCPP_ERROR(logger_, "cv_bridge exception: %s", e.what());
         return;
@@ -252,7 +262,8 @@ void DetectorNode::armor_image_callback(sensor_msgs::msg::Image::SharedPtr image
         std::unique_lock<std::mutex> lock(detector_mutex_);
         if (params_.autoaim_mode == AUTOAIM) {
             ArmorTransformInfo armor_transform_info { ros2cv(ts_odom2cam.transform.rotation),
-                                                      ros2cv(ts_cam2odom.transform.rotation),yaw };
+                                                      ros2cv(ts_cam2odom.transform.rotation),
+                                                      yaw };
             if (params_.armor.use_traditional) {
                 auto input_image = std::make_shared<Image>(std::move(image_));
                 armors_msg_ = ArmorEnergyDetectStream::detect(
@@ -305,8 +316,11 @@ void DetectorNode::armor_image_callback(sensor_msgs::msg::Image::SharedPtr image
         // publish
         armors_pub_->publish(armors_msg_);
         rclcpp::Time now = this->get_clock()->now();
-        RCLCPP_INFO(logger_, "time cost: %.2f ms" ,
-                    (now - rclcpp::Time(image_msg->header.stamp)).seconds() * 1000.0);
+        RCLCPP_INFO(
+            logger_,
+            "time cost: %.2f ms",
+            (now - rclcpp::Time(image_msg->header.stamp)).seconds() * 1000.0
+        );
         // debug info
         if (params_.debug) {
             publish_debug_infos();
@@ -435,30 +449,36 @@ void DetectorNode::publish_debug_infos() {
         if (params_.autoaim_mode == AUTOAIM) {
             // Armor mode
             if (params_.armor.use_traditional) {
-                auto images =
-                    ArmorEnergyDetectStream::get_debug_images<TraditionalArmorDebugImage>(detector_
-                    );
+                auto images = ArmorEnergyDetectStream::get_debug_images<TraditionalArmorDebugImage>(
+                    detector_
+                );
                 if (params_.use_projection) {
                     pnp_solver_->draw_projection_points(images.result_img);
                 }
-                binary_img_pub_.publish(cv_bridge::CvImage(
-                                            std_msgs::msg::Header(),
-                                            sensor_msgs::image_encodings::MONO8,
-                                            images.binary_img
-                )
-                                            .toImageMsg());
-                result_img_pub_.publish(cv_bridge::CvImage(
-                                            std_msgs::msg::Header(),
-                                            sensor_msgs::image_encodings::RGB8,
-                                            images.result_img
-                )
-                                            .toImageMsg());
-                number_img_pub_.publish(cv_bridge::CvImage(
-                                            std_msgs::msg::Header(),
-                                            sensor_msgs::image_encodings::MONO8,
-                                            images.number_img
-                )
-                                            .toImageMsg());
+                binary_img_pub_.publish(
+                    cv_bridge::CvImage(
+                        std_msgs::msg::Header(),
+                        sensor_msgs::image_encodings::MONO8,
+                        images.binary_img
+                    )
+                        .toImageMsg()
+                );
+                result_img_pub_.publish(
+                    cv_bridge::CvImage(
+                        std_msgs::msg::Header(),
+                        sensor_msgs::image_encodings::RGB8,
+                        images.result_img
+                    )
+                        .toImageMsg()
+                );
+                number_img_pub_.publish(
+                    cv_bridge::CvImage(
+                        std_msgs::msg::Header(),
+                        sensor_msgs::image_encodings::MONO8,
+                        images.number_img
+                    )
+                        .toImageMsg()
+                );
 
                 try {
                     auto debug_infos =
@@ -479,17 +499,20 @@ void DetectorNode::publish_debug_infos() {
             } else {
                 // Network armor detector
                 auto images =
-                    ArmorEnergyDetectStream::get_debug_images<OVNetArmorEnergyDebugImages>(detector_
+                    ArmorEnergyDetectStream::get_debug_images<OVNetArmorEnergyDebugImages>(
+                        detector_
                     );
                 if (params_.use_projection) {
                     pnp_solver_->draw_projection_points(images.result_img);
                 }
-                result_img_pub_.publish(cv_bridge::CvImage(
-                                            std_msgs::msg::Header(),
-                                            sensor_msgs::image_encodings::RGB8,
-                                            images.result_img
-                )
-                                            .toImageMsg());
+                result_img_pub_.publish(
+                    cv_bridge::CvImage(
+                        std_msgs::msg::Header(),
+                        sensor_msgs::image_encodings::RGB8,
+                        images.result_img
+                    )
+                        .toImageMsg()
+                );
             }
         } else {
             // Energy mode
@@ -501,32 +524,39 @@ void DetectorNode::publish_debug_infos() {
                 if (params_.use_projection) {
                     pnp_solver_->draw_projection_points(images.detect_img);
                 }
-                binary_img_pub_.publish(cv_bridge::CvImage(
-                                            std_msgs::msg::Header(),
-                                            sensor_msgs::image_encodings::MONO8,
-                                            images.binary_img
-                )
-                                            .toImageMsg());
-                result_img_pub_.publish(cv_bridge::CvImage(
-                                            std_msgs::msg::Header(),
-                                            sensor_msgs::image_encodings::RGB8,
-                                            images.detect_img
-                )
-                                            .toImageMsg());
+                binary_img_pub_.publish(
+                    cv_bridge::CvImage(
+                        std_msgs::msg::Header(),
+                        sensor_msgs::image_encodings::MONO8,
+                        images.binary_img
+                    )
+                        .toImageMsg()
+                );
+                result_img_pub_.publish(
+                    cv_bridge::CvImage(
+                        std_msgs::msg::Header(),
+                        sensor_msgs::image_encodings::RGB8,
+                        images.detect_img
+                    )
+                        .toImageMsg()
+                );
             } else {
                 // Network energy detector
                 auto images =
-                    ArmorEnergyDetectStream::get_debug_images<OVNetArmorEnergyDebugImages>(detector_
+                    ArmorEnergyDetectStream::get_debug_images<OVNetArmorEnergyDebugImages>(
+                        detector_
                     );
                 if (params_.use_projection) {
                     pnp_solver_->draw_projection_points(images.result_img);
                 }
-                result_img_pub_.publish(cv_bridge::CvImage(
-                                            std_msgs::msg::Header(),
-                                            sensor_msgs::image_encodings::RGB8,
-                                            images.result_img
-                )
-                                            .toImageMsg());
+                result_img_pub_.publish(
+                    cv_bridge::CvImage(
+                        std_msgs::msg::Header(),
+                        sensor_msgs::image_encodings::RGB8,
+                        images.result_img
+                    )
+                        .toImageMsg()
+                );
             }
         }
     } catch (const std::exception& e) {

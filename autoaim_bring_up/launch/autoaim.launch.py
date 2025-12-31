@@ -249,7 +249,14 @@ def generate_launch_description():
                         'camera_name': 'mv_camera',
                         'exposure_time': 2000,
                     }],
-                    extra_arguments=[{'use_intra_process_comms': False}]
+                    extra_arguments=[{'use_intra_process_comms': True}]
+                ),
+                ComposableNode(
+                    package='detector_node',
+                    plugin='helios_cv::DetectorNode',
+                    name='detector_node',
+                    parameters=[node_params],
+                    extra_arguments=[{'use_intra_process_comms': True}]
                 ),
                 
             ],
@@ -260,7 +267,7 @@ def generate_launch_description():
         #cam_detector,
         # delay_autoaim_bridge_node,
         # delay_camera_node,
-        detector_node,
+        # detector_node,
         # delay_ctrl_bridge_node,
         # autoaim_debugger,
         delay_armor_tracker_node,
