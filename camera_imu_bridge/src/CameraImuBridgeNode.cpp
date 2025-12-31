@@ -49,20 +49,20 @@ CameraImuBridgeNode::CameraImuBridgeNode(const rclcpp::NodeOptions& options):
 
 std::function<void(LogLevel, const std::string&)> CameraImuBridgeNode::makeLogCallback() {
     return [this](const LogLevel loglevel, const std::string& msg) {
-        switch (loglevel) {
-            case LogLevel::Info: {
-                RCLCPP_INFO(get_logger(), "%s", msg.c_str());
-                break;
-            }
-            case LogLevel::Warn: {
-                RCLCPP_WARN(get_logger(), "%s", msg.c_str());
-                break;
-            }
-            case LogLevel::Error: {
-                RCLCPP_ERROR(get_logger(), "%s", msg.c_str());
-                break;
-            }
-        }
+        // switch (loglevel) {
+        //     case LogLevel::Info: {
+        //         RCLCPP_INFO(get_logger(), "%s", msg.c_str());
+        //         break;
+        //     }
+        //     case LogLevel::Warn: {
+        //         RCLCPP_WARN(get_logger(), "%s", msg.c_str());
+        //         break;
+        //     }
+        //     case LogLevel::Error: {
+        //         RCLCPP_ERROR(get_logger(), "%s", msg.c_str());
+        //         break;
+        //     }
+        // }
     };
 }
 std::function<void(std::shared_ptr<CameraFrame>, std::shared_ptr<ImuFrame>)>
