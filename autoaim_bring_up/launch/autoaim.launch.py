@@ -260,6 +260,7 @@ def generate_launch_description():
                 ),
                 
             ],
+            prefix=[f"{get_terminal_command()} gdb -ex run --args"],
             output='both',
         ),
 
