@@ -39,7 +39,7 @@ void ImuSerial::setRtsPhysical(bool physical_high) {
     ioctl(fd, TIOCMSET, &status);
 }
 
-uint8_t ImuSerialCcalculateNmeaChecksum(const std::string& sentence) {
+uint8_t ImuSerial::calculateNmeaChecksum(const std::string& sentence) {
     uint8_t checksum = 0;
     for (size_t i = 1; i < sentence.length(); ++i) {
         checksum ^= sentence[i];
