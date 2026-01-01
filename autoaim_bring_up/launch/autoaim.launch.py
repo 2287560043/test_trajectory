@@ -241,16 +241,16 @@ def generate_launch_description():
             package='rclcpp_components',
             executable='component_container_mt',
             composable_node_descriptions=[
-                ComposableNode(
-                    package='camera_imu_bridge',
-                    plugin='helios_cv::CameraImuBridgeNode',
-                    name='camera_imu_bridge',
-                    parameters=[{
-                        'camera_name': 'mv_camera',
-                        'exposure_time': 2000,
-                    }],
-                    extra_arguments=[{'use_intra_process_comms': True}]
-                ),
+                # ComposableNode(
+                #     package='camera_imu_bridge',
+                #     plugin='helios_cv::CameraImuBridgeNode',
+                #     name='camera_imu_bridge',
+                #     parameters=[{
+                #         'camera_name': 'mv_camera',
+                #         'exposure_time': 2000,
+                #     }],
+                #     extra_arguments=[{'use_intra_process_comms': True}]
+                # ),
                 ComposableNode(
                     package='detector_node',
                     plugin='helios_cv::DetectorNode',
@@ -260,19 +260,19 @@ def generate_launch_description():
                 ),
                 
             ],
-            prefix=[f"{get_terminal_command()} gdb -ex run --args"],
+            # prefix=[f"{get_terminal_command()} gdb -ex run --args"],
             output='both',
         ),
 
-        robot_state_publisher,
+        # robot_state_publisher,
         #cam_detector,
         # delay_autoaim_bridge_node,
         # delay_camera_node,
         # detector_node,
         # delay_ctrl_bridge_node,
         # autoaim_debugger,
-        delay_armor_tracker_node,
-        delay_energy_tracker_node,
+        # delay_armor_tracker_node,
+        # delay_energy_tracker_node,
         # camera_imu_syncer,
         # node_tf2,
         # camera_recorder,
