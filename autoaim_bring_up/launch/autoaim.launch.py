@@ -241,16 +241,16 @@ def generate_launch_description():
             package='rclcpp_components',
             executable='component_container_mt',
             composable_node_descriptions=[
-                # ComposableNode(
-                #     package='camera_imu_bridge',
-                #     plugin='helios_cv::CameraImuBridgeNode',
-                #     name='camera_imu_bridge',
-                #     parameters=[{
-                #         'camera_name': 'mv_camera',
-                #         'exposure_time': 2000,
-                #     }],
-                #     extra_arguments=[{'use_intra_process_comms': True}]
-                # ),
+                ComposableNode(
+                    package='camera_imu_bridge',
+                    plugin='helios_cv::CameraImuBridgeNode',
+                    name='camera_imu_bridge',
+                    parameters=[{
+                        'camera_name': 'mv_camera',
+                        'exposure_time': 2000,
+                    }],
+                    extra_arguments=[{'use_intra_process_comms': True}]
+                ),
                 ComposableNode(
                     package='detector_node',
                     plugin='helios_cv::DetectorNode',
