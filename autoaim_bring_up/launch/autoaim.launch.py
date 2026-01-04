@@ -246,21 +246,18 @@ def generate_launch_description():
                     package='camera_imu_bridge',
                     plugin='helios_cv::CameraImuBridgeNode',
                     name='camera_imu_bridge',
-                    parameters=[{
-                        'camera_name': 'mv_camera',
-                        'exposure_time': 2000,
-                    }],
+                    parameters=[node_params],
                     extra_arguments=[{'use_intra_process_comms': True}]
                 ),
                 ComposableNode(
                     package='detector_node',
                     plugin='helios_cv::DetectorNode',
                     name='detector_node',
+                    parameters=[node_params],
                     extra_arguments=[{'use_intra_process_comms': True}]
                 ),
                 
             ],
-            parameters=[node_params],
             # prefix=[f"{get_terminal_command()} gdb -ex run --args"],
             output='both',
         ),

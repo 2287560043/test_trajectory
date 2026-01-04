@@ -95,3 +95,31 @@
       sigma_r_v: 5.0
     max_lost: 20
     max_detect: 5
+/camera_imu_bridge:
+  ros__parameters:
+    camera:
+      camera_name: "mv_camera"
+      config_file_path: "package://camera_imu_bridge/camera_config/"
+      camera_info_url: "package://camera_imu_bridge/config/camera_info.yaml"
+      print_fps: true
+      exposure_time: 3000
+      analog_gain: 100
+      rgb_gain:
+        r: 100
+        g: 100
+        b: 100
+      saturation:
+        type: 100
+      gamma:
+        type: 100
+      rotate:
+        type: false
+    imu:
+      type: "ftd2xx"
+    syncer:
+      camera_imu_time_difference_us:
+        min: 3000
+        max: 10000
+      imu_frame_since_trigger: 0
+
+

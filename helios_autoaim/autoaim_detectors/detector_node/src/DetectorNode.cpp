@@ -171,7 +171,7 @@ DetectorNode::DetectorNode(const rclcpp::NodeOptions& options):
     param_switch_thread = std::thread([this]() -> void {
         while (rclcpp::ok()) {
             if (param_listener_->is_old(params_)) {
-                // RCLCPP_INFO(logger_, "Params start updated");
+                RCLCPP_INFO(logger_, "Params start updated");
                 std::unique_lock<std::mutex> lock(detector_mutex_);
                 params_ = param_listener_->get_params();
                 if ((params_.autoaim_mode != last_autoaim_mode_
