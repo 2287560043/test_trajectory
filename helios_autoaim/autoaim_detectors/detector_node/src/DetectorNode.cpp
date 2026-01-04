@@ -43,6 +43,11 @@ DetectorNode::DetectorNode(const rclcpp::NodeOptions& options):
         params_ = param_listener_->get_params();
         armor_use_traditional_ = params_.armor.use_traditional;
         energy_use_traditional_ = params_.energy.use_traditional;
+        if(armor_use_traditional_) {
+            RCLCPP_INFO(logger_, "Initial detector params: traditional armor detector");
+        } else {
+            RCLCPP_INFO(logger_, "Initial detector params: ovnet armor detector");
+        }
     } catch (const std::exception& e) {
         RCLCPP_FATAL(logger_, "Failed to get parameters: %s, use empty params", e.what());
     }

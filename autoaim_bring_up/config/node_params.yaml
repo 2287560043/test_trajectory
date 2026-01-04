@@ -20,7 +20,7 @@
     serial_name: /dev/ttyACM0
     serial_baudrate: 921600.0
     left_yaw2pitch_translation: 0.0
-/armor_detector:
+/detector_node:
   ros__parameters:
     use_projection: true
     debug: true
