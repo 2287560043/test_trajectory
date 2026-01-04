@@ -115,7 +115,7 @@
       rotate:
         type: false
     imu:
-      type: "ftd2xx"
+      type: "serial"
     syncer:
       camera_imu_time_difference_us:
         min: 3000
