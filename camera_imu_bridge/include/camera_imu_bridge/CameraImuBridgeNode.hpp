@@ -28,6 +28,7 @@ private:
         std::string imu_type;
         SyncerParams syncer;
     };
+     rclcpp::Logger logger_;
     std::function<void(LogLevel, const std::string&)> makeLogCallback();
     std::function<void(std::shared_ptr<CameraFrame>, std::shared_ptr<ImuFrame>)>
     makeProcessAndPublishSyncedFrameCallback();

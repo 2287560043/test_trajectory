@@ -1,10 +1,13 @@
 #include <camera_imu_bridge/CameraImuBridgeNode.hpp>
 #include <camera_imu_bridge/ImuFactory.hpp>
+#include <rclcpp/logger.hpp>
+#include <rclcpp/logging.hpp>
 #include <tf2/LinearMath/Quaternion.hpp>
 #include <tf2_geometry_msgs/tf2_geometry_msgs.hpp>
 namespace helios_cv {
 CameraImuBridgeNode::CameraImuBridgeNode(const rclcpp::NodeOptions& options):
-    Node("camera_imu_bridge_node", options) {
+    Node("camera_imu_bridge_node", options),
+    logger_(get_logger()) {
     image_pub_ = create_publisher<sensor_msgs::msg::Image>("image_raw", 10);
     info_pub_ = create_publisher<sensor_msgs::msg::CameraInfo>("camera_info", 10);
     tf_broadcaster_ = std::make_unique<tf2_ros::TransformBroadcaster>(*this);
@@ -25,12 +28,14 @@ CameraImuBridgeNode::CameraImuBridgeNode(const rclcpp::NodeOptions& options):
         cameraInfoManager->loadCameraInfo(cameraInfoUrl);
         camera_info_msg_ = cameraInfoManager->getCameraInfo();
     } else {
-        RCLCPP_WARN(this->get_logger(), "Invalid camera info URL: %s", cameraInfoUrl.c_str());
+        RCLCPP_WARN(logger_, "Invalid camera info URL: %s", cameraInfoUrl.c_str());
     }
 
     log_callback_ = makeLogCallback();
     process_and_publish_synced_frame_callback_ = makeProcessAndPublishSyncedFrameCallback();
     syncer_ = std::make_unique<Syncer>(log_callback_, process_and_publish_synced_frame_callback_);
+
+    RCLCPP_INFO(logger_, "Imu type: %s", business.imu_type.c_str());
     //ftd2xx中的winTypes和相机的SDK冲突
     imu_ = createImu(
         business.imu_type,
@@ -51,15 +56,15 @@ std::function<void(LogLevel, const std::string&)> CameraImuBridgeNode::makeLogCa
     return [this](const LogLevel loglevel, const std::string& msg) {
         switch (loglevel) {
             case LogLevel::Info: {
-                RCLCPP_INFO(get_logger(), "%s", msg.c_str());
+                RCLCPP_INFO(logger_, "%s", msg.c_str());
                 break;
             }
             case LogLevel::Warn: {
-                RCLCPP_WARN(get_logger(), "%s", msg.c_str());
+                RCLCPP_WARN(logger_, "%s", msg.c_str());
                 break;
             }
             case LogLevel::Error: {
-                RCLCPP_ERROR(get_logger(), "%s", msg.c_str());
+                RCLCPP_ERROR(logger_, "%s", msg.c_str());
                 break;
             }
         }
