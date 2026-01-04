@@ -111,9 +111,11 @@ CameraImuBridgeNode::makeProcessAndPublishSyncedFrameCallback() {
         image_msg_->data.resize(camera_frame->head.iWidth * camera_frame->head.iHeight * 3);
         camera_->processFrame(camera_frame, image_msg_->data.data());
 
-        image_pub_->publish(std::move(image_msg_));
-        info_pub_->publish(std::move(info_msg));
         tf_broadcaster_->sendTransform(transforms);
+        info_pub_->publish(std::move(info_msg));
+        image_pub_->publish(std::move(image_msg_));
+        
+        
     };
 }
 CameraImuBridgeNode::BusinessParams

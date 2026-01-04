@@ -53,15 +53,6 @@ void Syncer::onCameraFrame(std::shared_ptr<CameraFrame> camera_frame) {
     camera_frame->id = camera_frame_id_;
     camera_frames_[camera_frame_id_] = camera_frame;
     if (sync_ready_) {
-        
-log(LogLevel::Info, "IMU Time:       {}",ms_to_utc_time(imu_frames_[camera_frame_id_-offset_]->system_time));
-log(LogLevel::Info, "Camera Time:    {}", ms_to_utc_time(camera_frames_[camera_frame_id_]->frame_timestamp_ms));
-log(LogLevel::Info, "cameraId:       {}", camera_frame->id);
-log(LogLevel::Info, "imuId:          {}", camera_frame->id -offset_);
-log(LogLevel::Info, "offset:         {}", offset_);  
-log(LogLevel::Info, "time diffrence: {}", std::chrono::duration_cast<std::chrono::microseconds>(camera_frame->time - imu_frames_[camera_frame->id - offset_]->time).count()/1000.0);
-log(LogLevel::Info, "-----------------------------------");
-
 
 processAndPublishSyncedFrame(camera_frame_id_ % 10);
     } else {
@@ -166,6 +157,8 @@ void Syncer::processAndPublishSyncedFrame(int camera_frame_index) {
         auto imu_frame_index = imu_id % 10;
         camera_imu_synced_index_ = (static_cast<uint16_t>(camera_frame_index) << 8) | imu_frame_index;
         camera_imu_synced_index_.notify_one();
+
+
     }
 };
 void Syncer::processAndPublishSyncedFrameLoop() {
@@ -180,6 +173,13 @@ void Syncer::processAndPublishSyncedFrameLoop() {
                 camera_frames_[camera_frame_index],
                 imu_frames_[imu_frame_index]
             );
+log(LogLevel::Info, "IMU Time:       {}",ms_to_utc_time(imu_frames_[imu_frame_index]->system_time));
+log(LogLevel::Info, "Camera Time:    {}", ms_to_utc_time(camera_frames_[camera_frame_index]->frame_timestamp_ms));
+log(LogLevel::Info, "cameraId:       {}", camera_frames_[camera_frame_index]->id);
+log(LogLevel::Info, "imuId:          {}", imu_frames_[imu_frame_index]->id);
+log(LogLevel::Info, "offset:         {}", offset_);  
+log(LogLevel::Info, "time diffrence: {}", std::chrono::duration_cast<std::chrono::microseconds>(camera_frames_[camera_frame_index]->time - imu_frames_[imu_frame_index]->time).count()/1000.0);
+log(LogLevel::Info, "-----------------------------------");
         }
     }
 }

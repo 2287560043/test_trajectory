@@ -240,6 +240,7 @@ def generate_launch_description():
             namespace='',
             package='rclcpp_components',
             executable='component_container_mt',
+            # parameters=[node_params],
             composable_node_descriptions=[
                 ComposableNode(
                     package='camera_imu_bridge',
@@ -255,24 +256,24 @@ def generate_launch_description():
                     package='detector_node',
                     plugin='helios_cv::DetectorNode',
                     name='detector_node',
-                    parameters=[node_params],
                     extra_arguments=[{'use_intra_process_comms': True}]
                 ),
                 
             ],
+            parameters=[node_params],
             # prefix=[f"{get_terminal_command()} gdb -ex run --args"],
             output='both',
         ),
 
-        # robot_state_publisher,
+        robot_state_publisher,
         #cam_detector,
         # delay_autoaim_bridge_node,
         # delay_camera_node,
         # detector_node,
         # delay_ctrl_bridge_node,
-        # autoaim_debugger,
-        # delay_armor_tracker_node,
-        # delay_energy_tracker_node,
+        autoaim_debugger,
+        delay_armor_tracker_node,
+        delay_energy_tracker_node,
         # camera_imu_syncer,
         # node_tf2,
         # camera_recorder,

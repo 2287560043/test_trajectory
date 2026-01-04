@@ -206,10 +206,14 @@ void DetectorNode::init_detectors() {
 
 void DetectorNode::armor_image_callback(sensor_msgs::msg::Image::UniquePtr image_msg) {
     // convert image msg to cv::Mat
+            auto image_header = image_msg->header;
+
     try {
         image_ = std::move(
             cv_bridge::toCvShare(std::move(image_msg), sensor_msgs::image_encodings::RGB8)->image
+
         );
+
     } catch (const cv_bridge::Exception& e) {
         RCLCPP_ERROR(logger_, "cv_bridge exception: %s", e.what());
         return;
@@ -217,9 +221,10 @@ void DetectorNode::armor_image_callback(sensor_msgs::msg::Image::UniquePtr image
     // Get transform
     geometry_msgs::msg::TransformStamped ts_odom2cam, ts_cam2odom;
     double yaw;
+
     if (pnp_solver_ != nullptr) {
-        armors_msg_.header = armor_marker_.header = text_marker_.header = image_msg->header;
-        // RCLCPP_INFO(logger_, "%d",image_msg->header.stamp);
+        armors_msg_.header = armor_marker_.header = text_marker_.header = image_header;
+
         armors_msg_.armors.clear();
         marker_array_.markers.clear();
         armor_marker_.id = 0;
@@ -231,17 +236,17 @@ void DetectorNode::armor_image_callback(sensor_msgs::msg::Image::UniquePtr image
             frame_namespace_ + "camera_optical_frame",
             frame_namespace_ + "odoom",
             //timestamp from image
-            image_msg->header.stamp
+            image_header.stamp
         );
         ts_cam2odom = tf2_buffer_->lookupTransform(
             frame_namespace_ + "odoom",
             frame_namespace_ + "camera_optical_frame",
-            image_msg->header.stamp
+            image_header.stamp
         );
         auto odom2yawlink = tf2_buffer_->lookupTransform(
             frame_namespace_ + "yaw_link",
             frame_namespace_ + "odoom",
-            image_msg->header.stamp
+            image_header.stamp
         );
         tf2::Quaternion q(
             odom2yawlink.transform.rotation.x,
@@ -254,7 +259,7 @@ void DetectorNode::armor_image_callback(sensor_msgs::msg::Image::UniquePtr image
         double roll, pitch;
         m.getRPY(roll, pitch, yaw);
     } catch (const tf2::TransformException& ex) {
-        RCLCPP_ERROR_ONCE(get_logger(), "Error while transforming %s", ex.what());
+        RCLCPP_ERROR(get_logger(), "Error while transforming %s", ex.what());
         return;
     }
     // detect
@@ -272,17 +277,17 @@ void DetectorNode::armor_image_callback(sensor_msgs::msg::Image::UniquePtr image
                     input_image,
                     &armor_transform_info
                 );
-                armors_msg_.header = image_msg->header;
+                armors_msg_.header = image_header;
             } else {
                 auto input_image =
-                    std::make_shared<ImageStamped>(std::move(image_), image_msg->header.stamp);
+                    std::make_shared<ImageStamped>(std::move(image_), image_header.stamp);
                 armors_msg_ = ArmorEnergyDetectStream::detect(
                     detector_,
                     pnp_solver_,
                     input_image,
                     &armor_transform_info
                 );
-                armors_msg_.header.frame_id = image_msg->header.frame_id;
+                armors_msg_.header.frame_id = image_header.frame_id;
             }
         } else {
             EnergyTransformInfo energy_transform_info { ros2cv(ts_odom2cam.transform.rotation),
@@ -296,21 +301,21 @@ void DetectorNode::armor_image_callback(sensor_msgs::msg::Image::UniquePtr image
                     input_image,
                     &energy_transform_info
                 );
-                armors_msg_.header = image_msg->header;
+                armors_msg_.header = image_header;
             } else {
                 auto input_image =
-                    std::make_shared<ImageStamped>(std::move(image_), image_msg->header.stamp);
+                    std::make_shared<ImageStamped>(std::move(image_), image_header.stamp);
                 armors_msg_ = ArmorEnergyDetectStream::detect(
                     detector_,
                     pnp_solver_,
                     input_image,
                     &energy_transform_info
                 );
-                armors_msg_.header.frame_id = image_msg->header.frame_id;
+                armors_msg_.header.frame_id = image_header.frame_id;
             }
         }
         if (armors_msg_.header.stamp.nanosec == 0 && armors_msg_.header.stamp.sec == 0) {
-            armors_msg_.header = image_msg->header;
+            armors_msg_.header = image_header;
         }
 
         // publish
@@ -319,7 +324,7 @@ void DetectorNode::armor_image_callback(sensor_msgs::msg::Image::UniquePtr image
         RCLCPP_INFO(
             logger_,
             "time cost: %.2f ms",
-            (now - rclcpp::Time(image_msg->header.stamp)).seconds() * 1000.0
+            (now - rclcpp::Time(image_header.stamp)).seconds() * 1000.0
         );
         // debug info
         if (params_.debug) {
