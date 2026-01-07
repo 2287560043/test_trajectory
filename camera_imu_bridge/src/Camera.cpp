@@ -42,7 +42,7 @@ void Camera::processFrame(std::shared_ptr<CameraFrame> camera_frame, BYTE* outpu
 }
 
 void Camera::setParams(const CameraParams& params) {
-    CameraSetTriggerMode(h_camera_,2);
+    CameraSetTriggerMode(h_camera_, 2);
     params_ = params;
     log(LogLevel::Info, "===  Set all params ===");
     {
