@@ -22,11 +22,7 @@ namespace helios_cv {
 
 class DetectorFactory {
 public:
-    std::unique_ptr<BaseDetector>
-    createTraditionalArmorDetector(const detector_node::Params& params);
-
-    std::unique_ptr<BaseDetector>
-    createOvnetArmorDetector(const detector_node::Params& params);
+    std::unique_ptr<BaseDetector> createArmorDetector(const detector_node::Params& params);
 };
 
 void param_convert(const detector_node::Params& params, TraditionalArmorParams& armor_params);

@@ -11,12 +11,12 @@
 
 #pragma once
 #include "autoaim_armor_detector/BaseDetector.hpp"
+#include "autoaim_interfaces/msg/detail/debug_armors__struct.hpp"
+#include "autoaim_interfaces/msg/detail/debug_lights__struct.hpp"
 #include "autoaim_utilities/Armor.hpp"
 #include <autoaim_utilities/NumberClassifier.hpp>
 #include <memory>
 #include <opencv2/core/mat.hpp>
-#include "autoaim_interfaces/msg/detail/debug_armors__struct.hpp"
-#include "autoaim_interfaces/msg/detail/debug_lights__struct.hpp"
 
 namespace helios_cv {
 
@@ -58,12 +58,11 @@ public:
 
     ~TraditionalArmorDetector() = default;
 
-    std::shared_ptr<Armors> detect_armors(std::shared_ptr<Image> image) final;
+    std::vector<Armor> detect_armors(cv::Mat image) final;
 
     void set_params(void* params) final;
 
     cv::Mat get_debug_image() final;
-
 
 private:
     cv::Mat preprocessImage(const cv::Mat& input);

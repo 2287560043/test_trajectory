@@ -20,45 +20,30 @@
     serial_name: /dev/ttyACM0
     serial_baudrate: 921600.0
     left_yaw2pitch_translation: 0.0
-/detector_node:
+/armor_detector_node:
   ros__parameters:
     use_projection: true
     debug: true
     is_blue: 0
     autoaim_mode: 0
-    armor:
-      use_traditional: 0
-      traditional:
-        binary_thres: 130.0
-        number_classifier_threshold: 0.8
-        light:
-          min_ratio: 0.05
-          max_ration: 0.4
-          max_angle: 40.0
-        armor:
-          min_light_ratio: 0.15
-          min_small_center_distance: 0.8
-          max_small_center_distance: 3.6
-          min_large_center_distance: 3.6
-          max_large_center_distance: 9.2
-          max_angle: 40.0
-      net:
-        model_path: 0405_9744.onnx
-        net_classifier_threshold: 0.65
-    energy:
-      use_traditional: 1
-      traditional:
-        binary_thres: 170.0
-        white_mask_thres: 230
-        rgb_weight_r_1: 1.7
-        rgb_weight_r_2: 0.3
-        rgb_weight_r_3: 0.0
-        rgb_weight_b_1: 0.0
-        rgb_weight_b_2: 0.0
-        rgb_weight_b_3: 0.85
-      net:
-        model_path: energy-8-n6-9994.onnx
-        net_classifier_threshold: 0.6
+    use_traditional: 1
+    traditional:
+      binary_thres: 130.0
+      number_classifier_threshold: 0.8
+      light:
+        min_ratio: 0.05
+        max_ration: 0.4
+        max_angle: 40.0
+      armor:
+        min_light_ratio: 0.15
+        min_small_center_distance: 0.8
+        max_small_center_distance: 3.6
+        min_large_center_distance: 3.6
+        max_large_center_distance: 9.2
+        max_angle: 40.0
+    net:
+      model_path: 0405_9744.onnx
+      net_classifier_threshold: 0.65
 /armor_predictor:
   ros__parameters:
     debug: true

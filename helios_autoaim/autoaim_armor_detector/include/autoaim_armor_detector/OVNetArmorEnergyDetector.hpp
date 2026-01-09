@@ -82,8 +82,7 @@ public:
 
     void start_processing() {}
 
-    std::pair<std::vector<Armor>, rclcpp::Time>
-    sync_detect_with_timestamp(const cv::Mat& frame, const rclcpp::Time& timestamp);
+    std::vector<Armor> sync_detect_with_timestamp(const cv::Mat& frame);
 
     cv::Mat get_debug_image() {
         std::lock_guard<std::mutex> lock(debug_image_mutex);
@@ -177,7 +176,7 @@ public:
 
     ~OVNetArmorEnergyDetector();
 
-    std::shared_ptr<Armors> detect_armors(std::shared_ptr<Image> image) final;
+    std::vector<Armor> detect_armors(cv::Mat image) final;
 
     // std::vector<ArmorStamped> detect_armors(const ImageStamped& image_stamped) final;
 

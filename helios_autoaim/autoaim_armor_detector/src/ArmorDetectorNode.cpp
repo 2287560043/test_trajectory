@@ -1,24 +1,12 @@
-// created by liuhan on 2023/10/29
-// Submodule of HeliosRobotSystem
-// for more see document: https://swjtuhelios.feishu.cn/docx/MfCsdfRxkoYk3oxWaazcfUpTnih?from=from_copylink
-/*
- * ██   ██ ███████ ██      ██  ██████  ███████
- * ██   ██ ██      ██      ██ ██    ██ ██
- * ███████ █████   ██      ██ ██    ██ ███████
- * ██   ██ ██      ██      ██ ██    ██      ██
- * ██   ██ ███████ ███████ ██  ██████  ███████
- */
-
-#include <autoaim_armor_detector/ArmorDetectorNode.hpp>
-
-#include "autoaim_armor_detector/ArmorDetectorFactory.hpp"
+#include <autoaim_armor_detector/ArmorDetectorFactory.hpp>
 #include <ament_index_cpp/get_package_share_directory.hpp>
+#include <autoaim_armor_detector/ArmorDetectorNode.hpp>
 #include <autoaim_armor_detector/DetectStream.hpp>
 #include <autoaim_utilities/Armor.hpp>
 #include <autoaim_utilities/PnPSolver.hpp>
 #include <camera_info_manager/camera_info_manager.hpp>
-#include <exception>
 #include <memory>
+#include "autoaim_interfaces/msg/receive_data.hpp"
 #include <opencv2/core.hpp>
 #include <rclcpp/logging.hpp>
 #include <rclcpp/parameter.hpp>
@@ -38,7 +26,7 @@ ArmorDetectorNode::ArmorDetectorNode(const rclcpp::NodeOptions& options):
 void ArmorDetectorNode::initParameters() {
     param_listener_ = std::make_shared<ParamListener>(this->get_node_parameters_interface());
     params_ = param_listener_->get_params();
-    armor_use_traditional_ = params_.armor.use_traditional;
+    armor_use_traditional_ = params_.use_traditional;
     node_namespace_ = this->get_namespace();
     if (node_namespace_.size() == 1) {
         node_namespace_.clear();
@@ -47,6 +35,12 @@ void ArmorDetectorNode::initParameters() {
     if (!frame_namespace_.empty()) {
         frame_namespace_.erase(frame_namespace_.begin());
         frame_namespace_ = frame_namespace_ + "_";
+    }
+}
+rcl_interfaces::msg::SetParametersResult
+on_parameter_event(const std::vector<rclcpp::Parameter>& params) {
+    for (auto param: params) {
+        if (param.get_name() == "use_traditional") {}
     }
 }
 
@@ -91,6 +85,7 @@ void ArmorDetectorNode::initInterfaces() {
             }
         }
     );
+
     image_sub_ = this->create_subscription<sensor_msgs::msg::Image>(
         node_namespace_ + "/image_raw",
         image_qos,
@@ -109,14 +104,8 @@ void ArmorDetectorNode::initInterfaces() {
 }
 
 void ArmorDetectorNode::initDectors() {
-    // create factory
     detector_factory_ = std::make_unique<DetectorFactory>();
-    // create detectors, default create armor detector
-    if (params_.armor.use_traditional) {
-        detector_ = std::move(detector_factory_->createTraditionalArmorDetector(params_));
-    } else {
-        detector_ = std::move(detector_factory_->createOvnetArmorDetector(params_));
-    }
+    detector_ = std::move(detector_factory_->createArmorDetector(params_));
 }
 void ArmorDetectorNode::initMarker() {
     armor_marker_.ns = "armors";
@@ -147,14 +136,8 @@ void ArmorDetectorNode::armorImageCallback(sensor_msgs::msg::Image::UniquePtr im
     // convert image msg to cv::Mat
     auto image_header = image_msg->header;
 
-    try {
-        // image_ = std::move(
-        //     cv_bridge::toCvShare(std::move(image_msg), sensor_msgs::image_encodings::RGB8)->image
-        // );
-    } catch (const cv_bridge::Exception& e) {
-        RCLCPP_ERROR(logger_, "cv_bridge exception: %s", e.what());
-        return;
-    }
+    auto image =
+        cv_bridge::toCvShare(std::move(image_msg), sensor_msgs::image_encodings::RGB8)->image;
     // Get transform
     geometry_msgs::msg::TransformStamped ts_odom2cam, ts_cam2odom;
     double yaw;
@@ -172,7 +155,6 @@ void ArmorDetectorNode::armorImageCallback(sensor_msgs::msg::Image::UniquePtr im
         ts_odom2cam = tf2_buffer_->lookupTransform(
             frame_namespace_ + "camera_optical_frame",
             frame_namespace_ + "odoom",
-            //timestamp from image
             image_header.stamp
         );
         ts_cam2odom = tf2_buffer_->lookupTransform(
@@ -204,15 +186,8 @@ void ArmorDetectorNode::armorImageCallback(sensor_msgs::msg::Image::UniquePtr im
     ArmorTransformInfo armor_transform_info { ros2cv(ts_odom2cam.transform.rotation),
                                               ros2cv(ts_cam2odom.transform.rotation),
                                               yaw };
-    if (params_.armor.use_traditional) {
-        // auto input_image = std::make_shared<Image>(std::move(image_));
-        // armors_msg_ = armor_detect_stream_->detect(input_image, &armor_transform_info);
-        // armors_msg_.header = image_header;
-    } else {
-        // auto input_image = std::make_shared<ImageStamped>(std::move(image_), image_header.stamp);
-        // armors_msg_ = armor_detect_stream_->detect(input_image, &armor_transform_info);
-        // armors_msg_.header.frame_id = image_header.frame_id;
-    }
+    armors_msg_ = armor_detect_stream_->detect(image, &armor_transform_info);
+    armors_msg_.header = image_header;
 
     // publish
     armors_pub_->publish(armors_msg_);
@@ -248,25 +223,14 @@ void ArmorDetectorNode::publishMarkers() {
 }
 
 void ArmorDetectorNode::publish_debug_infos() {
-    try {
-        // Armor mode
-        result_img_pub_.publish(
-            cv_bridge::CvImage(
-                std_msgs::msg::Header(),
-                sensor_msgs::image_encodings::RGB8,
-                armor_detect_stream_->get_debug_images()
-            )
-                .toImageMsg()
-        );
-    } catch (const std::exception& e) {
-        RCLCPP_ERROR_THROTTLE(
-            logger_,
-            *this->get_clock(),
-            1000,
-            "Error in publish_debug_infos: %s",
-            e.what()
-        );
-    }
+    result_img_pub_.publish(
+        cv_bridge::CvImage(
+            std_msgs::msg::Header(),
+            sensor_msgs::image_encodings::RGB8,
+            armor_detect_stream_->get_debug_images()
+        )
+            .toImageMsg()
+    );
 }
 
 ArmorDetectorNode::~ArmorDetectorNode() {

@@ -124,30 +124,30 @@ def generate_launch_description():
         on_exit=Shutdown(),
         parameters=[node_params],
     )
-    if not IS_GDB:  
-        detector_node = Node(
-            package='detector_node',
-            executable='detector_node_node',
-            name='armor_detector',
-            emulate_tty=True,
-            output='both',
-            parameters=[node_params],
-            arguments=['--ros-args', '--log-level',
-                    'armor_detector:='+launch_params['detector_log_level']],
-            on_exit=Shutdown(),
-        )
-    else:
-        detector_node = Node(
-            package='detector_node',
-            executable='detector_node_node',
-            name='detector_node',
-            emulate_tty=True,
-            output={'stderr': 'screen', 'stdout': 'screen'},
-            parameters=[node_params],
-            arguments=['--ros-args', '--log-level',
-                    'armor_detector:='+launch_params['detector_log_level']],
-            prefix=[f"{get_terminal_command()} gdb -ex run --args"],
-        )
+    # if not IS_GDB:  
+    #     detector_node = Node(
+    #         package='detector_node',
+    #         executable='detector_node_node',
+    #         name='armor_detector',
+    #         emulate_tty=True,
+    #         output='both',
+    #         parameters=[node_params],
+    #         arguments=['--ros-args', '--log-level',
+    #                 'armor_detector:='+launch_params['detector_log_level']],
+    #         on_exit=Shutdown(),
+    #     )
+    # else:
+    #     detector_node = Node(
+    #         package='detector_node',
+    #         executable='detector_node_node',
+    #         name='detector_node',
+    #         emulate_tty=True,
+    #         output={'stderr': 'screen', 'stdout': 'screen'},
+    #         parameters=[node_params],
+    #         arguments=['--ros-args', '--log-level',
+    #                 'armor_detector:='+launch_params['detector_log_level']],
+    #         prefix=[f"{get_terminal_command()} gdb -ex run --args"],
+    #     )
     # autoaim_bridge_node = Node(
     #     package='autoaim_bridge',
     #     executable='autoaim_bridge_node',
@@ -242,17 +242,17 @@ def generate_launch_description():
             executable='component_container_mt',
             # parameters=[node_params],
             composable_node_descriptions=[
+                # ComposableNode(
+                #     package='camera_imu_bridge',
+                #     plugin='helios_cv::CameraImuBridgeNode',
+                #     name='camera_imu_bridge',
+                #     parameters=[node_params],
+                #     extra_arguments=[{'use_intra_process_comms': True}]
+                # ),
                 ComposableNode(
-                    package='camera_imu_bridge',
-                    plugin='helios_cv::CameraImuBridgeNode',
-                    name='camera_imu_bridge',
-                    parameters=[node_params],
-                    extra_arguments=[{'use_intra_process_comms': True}]
-                ),
-                ComposableNode(
-                    package='detector_node',
-                    plugin='helios_cv::DetectorNode',
-                    name='detector_node',
+                    package='autoaim_armor_detector',
+                    plugin='helios_cv::ArmorDetectorNode',
+                    name='armor_detector_node',
                     parameters=[node_params],
                     extra_arguments=[{'use_intra_process_comms': True}]
                 ),
@@ -262,15 +262,16 @@ def generate_launch_description():
             output='both',
         ),
 
-        robot_state_publisher,
+        # robot_state_publisher,
+        # autoaim_debugger,
+        # delay_armor_tracker_node,
+        # delay_energy_tracker_node,
+
         #cam_detector,
         # delay_autoaim_bridge_node,
         # delay_camera_node,
         # detector_node,
         # delay_ctrl_bridge_node,
-        autoaim_debugger,
-        delay_armor_tracker_node,
-        delay_energy_tracker_node,
         # camera_imu_syncer,
         # node_tf2,
         # camera_recorder,

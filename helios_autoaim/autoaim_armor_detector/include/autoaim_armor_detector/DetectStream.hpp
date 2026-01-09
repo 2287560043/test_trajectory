@@ -27,7 +27,7 @@ public:
         detector_(std::move(detector)),
         pnp_solver_(std::move(pnp_solver)) {}
     autoaim_interfaces::msg::Armors
-    detect(std::shared_ptr<Image> image, void* extra_param = nullptr);
+    detect(cv::Mat image, void* extra_param = nullptr);
 
     cv::Mat get_debug_images() {
         return detector_->get_debug_image();

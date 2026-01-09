@@ -52,7 +52,7 @@ struct DebugInfos {
 
 class BaseDetector {
 public:
-    virtual std::shared_ptr<Armors> detect_armors(std::shared_ptr<Image> image) = 0;
+    virtual std::vector<Armor> detect_armors(cv::Mat image) = 0;
 
     virtual void set_params(void* params) = 0;
 

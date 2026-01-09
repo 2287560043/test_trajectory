@@ -24,177 +24,97 @@ detector_node:
     default_value: false,
     description: "whether to use projection"
   }
-  armor: 
-    use_traditional: {
-      type: int,
-      default_value: 1, 
-      description: "whether to use traditional method"
+  use_traditional: {
+    type: int,
+    default_value: 1, 
+    description: "whether to use traditional method"
+  }
+  traditional:
+    binary_thres: {
+      type: double,
+      default_value: 130,
+      description: "binary threshold",
     }
-    traditional:
-      binary_thres: {
+    number_classifier_threshold: {
         type: double,
-        default_value: 130,
-        description: "binary threshold",
-      }
-      number_classifier_threshold: {
+        default_value: 0.65,
+        description: "threshold of number classifier",
+    }
+    light:
+        min_ratio: {
           type: double,
-          default_value: 0.65,
-          description: "threshold of number classifier",
-      }
-      light:
-          min_ratio: {
-            type: double,
-            default_value: 0.05,
-            description: "min ratio of light",
-          }
-          max_ratio: {
-            type: double,
-            default_value: 0.4,
-            description: "max ratio of light",
-          }
-          max_angle: {
-            type: double,
-            default_value: 40.0,
-            description: "max angle of light",
-          }
-      armor:
-          min_light_ratio: {
-            type: double,
-            default_value: 0.15,
-            description: "min ratio of light",
-          }
-          min_small_center_distance: {
-            type: double,
-            default_value: 0.8,
-            description: "min distance of small center",
-          }
-          max_small_center_distance: {
-            type: double,
-            default_value: 3.0,
-            description: "max distance of small center",
-          }
-          min_large_center_distance: {
-            type: double,
-            default_value: 3.0,
-            description: "max distance of big center",
-          }
-          max_large_center_distance: {
-            type: double,
-            default_value: 9.2,
-            description: "max distance of big center",
-          }
-          max_angle: {
-            type: double,
-            default_value: 40.0,
-            description: "max angle of armor",
-          }
-    net:
-      model_path: {
-        type: string,
-        default_value: "0405_9744.onnx",
-        description: "path of armor model",
-      }
-      net_classifier_threshold: {
-        type: double,
-        default_value: 0.8,
-        description: "classfier threshold of net detector"
-      }
-      num_class: {
-        type: int,
-        default_value: 7,
-      }
-      num_colors: {
-        type: int,
-        default_value: 2,
-      }
-      nms_thresh: {
-        type: double,
-        default_value: 0.6,
-      }
-      num_apex: {
-        type: int,
-        default_value: 4,
-      }
-      pool_num: {
-        type: int,
-        default_value: 1
-      }
-  energy: 
-    use_traditional: {
-      type: int,
-      default_value: 1,
-      description: "whether to use traditional method"
+          default_value: 0.05,
+          description: "min ratio of light",
+        }
+        max_ratio: {
+          type: double,
+          default_value: 0.4,
+          description: "max ratio of light",
+        }
+        max_angle: {
+          type: double,
+          default_value: 40.0,
+          description: "max angle of light",
+        }
+    armor:
+        min_light_ratio: {
+          type: double,
+          default_value: 0.15,
+          description: "min ratio of light",
+        }
+        min_small_center_distance: {
+          type: double,
+          default_value: 0.8,
+          description: "min distance of small center",
+        }
+        max_small_center_distance: {
+          type: double,
+          default_value: 3.0,
+          description: "max distance of small center",
+        }
+        min_large_center_distance: {
+          type: double,
+          default_value: 3.0,
+          description: "max distance of big center",
+        }
+        max_large_center_distance: {
+          type: double,
+          default_value: 9.2,
+          description: "max distance of big center",
+        }
+        max_angle: {
+          type: double,
+          default_value: 40.0,
+          description: "max angle of armor",
+        }
+  net:
+    model_path: {
+      type: string,
+      default_value: "0405_9744.onnx",
+      description: "path of armor model",
     }
-    traditional:
-      binary_thres: {
-        type: double,
-        default_value: 180,
-        description: "binary threshold",
-      }
-      white_mask_thres: {
-        type: int,
-        default_value: 90,
-        description: "white mask in BGR threshold",
-      }
-      rgb_weight_r_1: {
-        type: double,
-        default_value: 0.0,
-        description: "blue weight ratio for red energy",
-      }
-      rgb_weight_r_2: {
-        type: double,
-        default_value: 1.2,
-        description: "green weight ratio for red energy",
-      }
-      rgb_weight_r_3: {
-        type: double,
-        default_value: 1.9,
-        description: "red weight ratio for red energy",
-      }
-      rgb_weight_b_1: {
-        type: double,
-        default_value: 1.8,
-        description: "blue weight ratio for blue energy",
-      }
-      rgb_weight_b_2: {
-        type: double,
-        default_value: 0.5,
-        description: "green weight ratio for blue energy",
-      }
-      rgb_weight_b_3: {
-        type: double,
-        default_value: 0.0,
-        description: "red weight ratio for blue energy",
-      }
-    net:
-      model_path: {
-        type: string,
-        default_value: "energy-8-n6-9994.onnx",
-        description: "path of energy model",
-      }
-      net_classifier_threshold: {
-        type: double,
-        default_value: 0.6,
-        description: "classfier threshold of net detector"
-      }
-      num_class: {
-        type: int,
-        default_value: 3,
-      }
-      num_colors: {
-        type: int,
-        default_value: 2,
-      }
-      nms_thresh: {
-        type: double,
-        default_value: 0.2,
-      }
-      num_apex: {
-        type: int,
-        default_value: 4,
-      }
-      pool_num: {
-        type: int,
-        default_value: 1
-      }
-
+    net_classifier_threshold: {
+      type: double,
+      default_value: 0.8,
+      description: "classfier threshold of net detector"
+    }
+    num_class: {
+      type: int,
+      default_value: 7,
+    }
+    num_colors: {
+      type: int,
+      default_value: 2,
+    }
+    nms_thresh: {
+      type: double,
+      default_value: 0.6,
+    }
+    num_apex: {
+      type: int,
+      default_value: 4,
+    }
+    pool_num: {
+      type: int,
+      default_value: 1
+    }

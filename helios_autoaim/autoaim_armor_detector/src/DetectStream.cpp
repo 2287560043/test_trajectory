@@ -10,7 +10,7 @@
  */
 
 #include "autoaim_armor_detector/DetectStream.hpp"
-#include "autoaim_armor_detector/OVNetArmorEnergyDetector.hpp"
+#include "OVNetArmorEnergyDetector.hpp"
 #include <autoaim_utilities/PnPSolver.hpp>
 #include <memory>
 #include <rclcpp/logger.hpp>
@@ -20,8 +20,7 @@
 
 namespace helios_cv {
 
-autoaim_interfaces::msg::Armors
-ArmorDetectStream::detect(std::shared_ptr<Image> image, void* extra_param) {
+autoaim_interfaces::msg::Armors ArmorDetectStream::detect(cv::Mat image, void* extra_param) {
     autoaim_interfaces::msg::Armors armors_msg;
 
     if (extra_param) {
@@ -29,17 +28,12 @@ ArmorDetectStream::detect(std::shared_ptr<Image> image, void* extra_param) {
     }
 
     auto armors = detector_->detect_armors(image);
-    auto armors_stamped = dynamic_cast<ArmorsStamped*>(armors.get());
 
-    if (armors_stamped) {
-        armors_msg.header.stamp = armors_stamped->stamp;
-    }
-
-    if (!armors_stamped || armors_stamped->armors.empty()) {
-      return armors_msg;
+    if (armors.empty()) {
+        return armors_msg;
     }
     autoaim_interfaces::msg::Armor temp_armor;
-    for (const auto& armor: armors->armors) {
+    for (const auto& armor: armors) {
         cv::Mat tvec, rvec;
         if (armor.type == ArmorType::ENERGY_FAN) {
             pnp_solver_->solve_pose(armor, rvec, tvec);

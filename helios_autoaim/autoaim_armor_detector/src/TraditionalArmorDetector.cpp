@@ -14,9 +14,9 @@ namespace helios_cv {
 
 TraditionalArmorDetector::TraditionalArmorDetector(const TraditionalArmorParams& params) {
     params_ = params;
-    auto model_path = ament_index_cpp::get_package_share_directory("detectors") + "/model/mlp.onnx";
+    auto model_path = ament_index_cpp::get_package_share_directory("autoaim_armor_detector") + "/model/mlp.onnx";
     auto label_path =
-        ament_index_cpp::get_package_share_directory("detectors") + "/model/label.txt";
+        ament_index_cpp::get_package_share_directory("autoaim_armor_detector") + "/model/label.txt";
     number_classifier_ = std::make_shared<NumberClassifier>(
         model_path,
         label_path,
@@ -25,26 +25,20 @@ TraditionalArmorDetector::TraditionalArmorDetector(const TraditionalArmorParams&
     );
 }
 
-std::shared_ptr<Armors> TraditionalArmorDetector::detect_armors(std::shared_ptr<Image> image) {
-    auto armors_stamped = std::make_shared<ArmorsStamped>();
-    if (number_classifier_ == nullptr) {
-        RCLCPP_WARN(logger_, "Detector not initialized");
-        armors_stamped->armors.clear();
-        return std::move(armors_stamped);
-    }
+std::vector<Armor> TraditionalArmorDetector::detect_armors(cv::Mat image) {
     // preprocess
-    debug_images_.binary_img = preprocessImage(image->image);
-    lights_ = findLights(image->image, debug_images_.binary_img);
-    armors_stamped->armors = matchLights(lights_);
-    if (!armors_stamped->armors.empty()) {
-        number_classifier_->extractNumbers(image->image, armors_stamped->armors);
-        number_classifier_->classify(armors_stamped->armors);
+    debug_images_.binary_img = preprocessImage(image);
+    lights_ = findLights(image, debug_images_.binary_img);
+    auto armors = matchLights(lights_);
+    if (!armors.empty()) {
+        number_classifier_->extractNumbers(image, armors);
+        number_classifier_->classify(armors);
     }
     // debug infos
     if (params_.debug) {
-        draw_results(armors_stamped->armors);
+        draw_results(armors);
     }
-    return std::move(armors_stamped);
+    return std::move(armors);
 }
 
 void TraditionalArmorDetector::set_params(void* params) {
@@ -54,7 +48,6 @@ void TraditionalArmorDetector::set_params(void* params) {
 cv::Mat TraditionalArmorDetector::get_debug_image() {
     return debug_images_.result_img;
 }
-
 
 cv::Mat TraditionalArmorDetector::preprocessImage(const cv::Mat& input) {
     cv::Mat gray_img;

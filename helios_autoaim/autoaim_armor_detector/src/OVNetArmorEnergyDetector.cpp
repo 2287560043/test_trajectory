@@ -222,14 +222,7 @@ ArmorType YOLOXDetector::judge_armor_type(const Armor& armor) {
     return center_distance > params_.min_large_center_distance ? ArmorType::LARGE
                                                                : ArmorType::SMALL;
 }
-std::pair<std::vector<Armor>, rclcpp::Time>
-YOLOXDetector::sync_detect_with_timestamp(const cv::Mat& frame, const rclcpp::Time& timestamp) {
-    auto processing_start = std::chrono::steady_clock::now();
-
-    if (frame.empty()) {
-        return { std::vector<Armor>(), timestamp };
-    }
-
+std::vector<Armor> YOLOXDetector::sync_detect_with_timestamp(const cv::Mat& frame) {
     cv::Mat resized_frame;
     float scale = std::min(
         static_cast<float>(INPUT_W) / frame.cols,
@@ -302,11 +295,6 @@ YOLOXDetector::sync_detect_with_timestamp(const cv::Mat& frame, const rclcpp::Ti
         armors.push_back(armor_target);
     }
 
-    // 计算延迟
-    auto processing_end = std::chrono::steady_clock::now();
-    current_latency_ms_ =
-        std::chrono::duration<double, std::milli>(processing_end - processing_start).count();
-
     if (params_.debug && !frame.empty()) {
         cv::Mat debug_frame = frame.clone();
         ArmorsStamped armor_stamped;
@@ -314,7 +302,6 @@ YOLOXDetector::sync_detect_with_timestamp(const cv::Mat& frame, const rclcpp::Ti
         draw_objects(debug_frame, armor_stamped);
 
         std::stringstream ss_latency;
-        // ss_latency << "Latency: " << std::fixed << std::setprecision(1) << current_latency_ms_ << " ms";
         cv::putText(
             debug_frame,
             ss_latency.str(),
@@ -329,11 +316,7 @@ YOLOXDetector::sync_detect_with_timestamp(const cv::Mat& frame, const rclcpp::Ti
         debug_image = debug_frame;
     }
 
-    // if (params_.debug) {
-    //   RCLCPP_INFO(rclcpp::get_logger("YOLOXDetector"), "Latency: %.1f ms", current_latency_ms_);
-    // }
-
-    return { armors, timestamp };
+    return armors;
 }
 
 std::vector<YOLOXDetector::Object> YOLOXDetector::process(const ov::Tensor& output_tensor) {
@@ -539,33 +522,10 @@ OVNetArmorEnergyDetector::~OVNetArmorEnergyDetector() {
     detector_->stop_processing();
 }
 
-std::shared_ptr<Armors>
-OVNetArmorEnergyDetector::detect_armors(std::shared_ptr<Image> img_stamped) {
-    auto armors_stamped = std::make_shared<ArmorsStamped>();
-    std::shared_ptr<ImageStamped> image_stamped =
-        std::dynamic_pointer_cast<ImageStamped>(img_stamped);
+std::vector<Armor> OVNetArmorEnergyDetector::detect_armors(cv::Mat image) {
+    auto armors = detector_->sync_detect_with_timestamp(image);
 
-    if (!image_stamped || image_stamped->image.empty()) {
-        armors_stamped->stamp = image_stamped ? image_stamped->stamp : rclcpp::Time();
-        return std::move(armors_stamped);
-    }
-
-    rclcpp::Time original_timestamp = image_stamped->stamp;
-
-    auto [armors, timestamp] =
-        detector_->sync_detect_with_timestamp(image_stamped->image, original_timestamp);
-
-    armors_stamped->stamp = timestamp;
-    armors_stamped->armors = std::move(armors);
-
-    // if(params_.debug) {
-    //   RCLCPP_INFO(rclcpp::get_logger("OVNetArmorEnergyDetector"),
-    //               "Input timestamp: %f, Output timestamp: %f",
-    //               original_timestamp.seconds() ,
-    //               armors_stamped->stamp.seconds());
-    // }
-
-    return std::move(armors_stamped);
+    return std::move(armors);
 }
 
 void OVNetArmorEnergyDetector::set_params(void* params) {
