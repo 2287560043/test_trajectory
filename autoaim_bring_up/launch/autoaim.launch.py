@@ -233,6 +233,16 @@ def generate_launch_description():
         output='both',
         emulate_tty=True,
     )
+    autoaim_armor_detector = Node(
+        package='autoaim_armor_detector',
+        executable='autoaim_armor_detecto_node',
+        name='autoaim_armor_detector',
+        emulate_tty=True,
+        output={'stderr': 'screen', 'stdout': 'screen'},
+        parameters=[node_params],
+        arguments=['--ros-args', '--log-level',
+                'armor_detector:='+launch_params['detector_log_level']],
+    )
 
     return LaunchDescription([
         ComposableNodeContainer(

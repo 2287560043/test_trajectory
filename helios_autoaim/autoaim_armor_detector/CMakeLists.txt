@@ -16,6 +16,7 @@ project(autoaim_armor_detector)
 
 find_package(ament_cmake_auto REQUIRED)
 find_package(OpenCV 4 REQUIRED)
+find_package(Ceres REQUIRED)
 if(CMAKE_HOST_SYSTEM_PROCESSOR MATCHES "x86_64")
 	find_package(OpenVINO REQUIRED)
 elseif(CMAKE_HOST_SYSTEM_PROCESSOR MATCHES "aarch64")
