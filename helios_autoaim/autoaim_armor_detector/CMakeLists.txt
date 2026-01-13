@@ -51,6 +51,8 @@ elseif(CMAKE_HOST_SYSTEM_PROCESSOR MATCHES "aarch64")
   target_link_libraries(
     ${PROJECT_NAME}
     ${OpenCV_LIBS}
+    Eigen3::Eigen
+    ${CERES_LIBRARIES}
     armor_detector_parameters
   )
 endif()
