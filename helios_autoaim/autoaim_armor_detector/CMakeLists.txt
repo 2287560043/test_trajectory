@@ -44,6 +44,8 @@ if(CMAKE_HOST_SYSTEM_PROCESSOR MATCHES "x86_64")
   target_link_libraries(
     ${PROJECT_NAME}
     ${OpenCV_LIBS}
+    Eigen3::Eigen
+    ${CERES_LIBRARIES}
     armor_detector_parameters
     openvino::runtime
   )
