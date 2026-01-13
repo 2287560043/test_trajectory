@@ -9,6 +9,7 @@
  * ██   ██ ███████ ███████ ██  ██████  ███████
  */
 #pragma once
+#include "armor_detector_parameters.hpp"
 #include "autoaim_utilities/Armor.hpp"
 #include <memory>
 #include <opencv2/core.hpp>
@@ -54,15 +55,9 @@ class BaseDetector {
 public:
     virtual std::vector<Armor> detect_armors(cv::Mat image) = 0;
 
-    virtual void set_params(void* params) = 0;
-
-    virtual void set_cam_info(const sensor_msgs::msg::CameraInfo& cam_info) {
-        cam_info_ = cam_info;
-        cam_center_ = cv::Point2f(cam_info_.width / 2.0, cam_info_.height / 2.0);
-    };
+    virtual void updateParams(const detector_node::Params& params) = 0;
 
     virtual cv::Mat get_debug_image() = 0;
-
     virtual ~BaseDetector() = default;
 
 protected:
@@ -74,10 +69,6 @@ protected:
     BaseDetector& operator=(const BaseDetector&) = delete;
 
     BaseDetector(BaseDetector&&) = delete;
-
-    sensor_msgs::msg::CameraInfo cam_info_;
-
-    cv::Point2f cam_center_;
 };
 
 } // namespace helios_cv

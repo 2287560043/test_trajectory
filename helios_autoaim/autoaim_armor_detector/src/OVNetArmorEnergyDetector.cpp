@@ -2,8 +2,10 @@
 // Created by zyi on 24-9-18.
 //
 #include "autoaim_armor_detector/OVNetArmorEnergyDetector.hpp"
+#include "armor_detector_parameters.hpp"
 #include "autoaim_armor_detector/BaseDetector.hpp"
 #include <algorithm>
+#include <ament_index_cpp/get_package_share_directory.hpp>
 #include <filesystem>
 #include <iostream>
 #include <memory>
@@ -26,14 +28,11 @@ YOLOXDetector::~YOLOXDetector() {
     stop_processing();
 }
 
-void YOLOXDetector::initialize(
-    const std::string& model_path,
-    const OVNetArmorEnergyDetectorParams& params
-) {
+void YOLOXDetector::initialize(const std::string& model_path, const detector_node::Params& params) {
     compiled_model = ov::CompiledModel();
     core = ov::Core();
     params_ = params;
-    NUM_CLASS = params_.net_params.NUM_CLASS;
+    NUM_CLASS = params_.net.num_class;
 
     try {
         core.set_property(ov::cache_dir("./cache"));
@@ -219,8 +218,8 @@ ArmorType YOLOXDetector::judge_armor_type(const Armor& armor) {
     float avg_light_length = (light_length1 + light_length2) / 2.0;
     float center_distance = cv::norm(light_center1 - light_center2) / avg_light_length;
 
-    return center_distance > params_.min_large_center_distance ? ArmorType::LARGE
-                                                               : ArmorType::SMALL;
+    return center_distance > params_.traditional.armor.min_large_center_distance ? ArmorType::LARGE
+                                                                                 : ArmorType::SMALL;
 }
 std::vector<Armor> YOLOXDetector::sync_detect_with_timestamp(const cv::Mat& frame) {
     cv::Mat resized_frame;
@@ -402,10 +401,10 @@ void YOLOXDetector::stop_processing() {
     }
 }
 
-void YOLOXDetector::update_params(const OVNetArmorEnergyDetectorParams& new_params) {
+void YOLOXDetector::update_params(const detector_node::Params& params) {
     std::lock_guard<std::mutex> lock(params_mutex_);
-    bool significant_change = (new_params.net_params.NUM_CLASS != params_.net_params.NUM_CLASS)
-        || (new_params.net_params.MODEL_PATH != params_.net_params.MODEL_PATH);
+    bool significant_change = (params.net.num_class != params_.net.num_class)
+        || (params.net.model_path != params_.net.model_path);
 
     if (significant_change) {
         RCLCPP_INFO(
@@ -413,14 +412,18 @@ void YOLOXDetector::update_params(const OVNetArmorEnergyDetectorParams& new_para
             "Significant parameter change detected, reinitializing detector"
         );
         stop_processing();
-        initialize(new_params.net_params.MODEL_PATH, new_params);
+        initialize(
+            ament_index_cpp::get_package_share_directory("autoaim_armor_detector") + "/model/"
+                + params.net.model_path,
+            params
+        );
         start_processing();
     } else {
         RCLCPP_INFO(
             rclcpp::get_logger("YOLOXDetector"),
             "Updating parameters without reinitialization"
         );
-        params_ = new_params;
+        params_ = params;
     }
 }
 
@@ -513,9 +516,14 @@ void YOLOXDetector::generate_grids_and_stride(
     }
 }
 
-OVNetArmorEnergyDetector::OVNetArmorEnergyDetector(const OVNetArmorEnergyDetectorParams& params) {
+OVNetArmorEnergyDetector::OVNetArmorEnergyDetector(const detector_node::Params& params) {
+    RCLCPP_INFO(logger_, "OVNetArmorEnergyDetector Constructed");
     params_ = params;
-    detector_ = std::make_unique<YOLOXDetector>(params_.net_params.MODEL_PATH, params_);
+    detector_ = std::make_unique<YOLOXDetector>(
+        ament_index_cpp::get_package_share_directory("autoaim_armor_detector") + "/model/"
+            + params.net.model_path,
+        params_
+    );
 }
 
 OVNetArmorEnergyDetector::~OVNetArmorEnergyDetector() {
@@ -528,23 +536,23 @@ std::vector<Armor> OVNetArmorEnergyDetector::detect_armors(cv::Mat image) {
     return std::move(armors);
 }
 
-void OVNetArmorEnergyDetector::set_params(void* params) {
-    auto new_params = *static_cast<OVNetArmorEnergyDetectorParams*>(params);
-
+void OVNetArmorEnergyDetector::updateParams(const detector_node::Params& params) {
     if (first_call_) {
-        params_ = new_params;
+        params_ = params;
         first_call_ = false;
         return;
     }
 
-    bool params_changed = (new_params.autoaim_mode != params_.autoaim_mode)
-        || (new_params.net_params.MODEL_PATH != params_.net_params.MODEL_PATH
-            || new_params.is_blue != params_.is_blue);
+    bool params_changed = (params.autoaim_mode != params_.autoaim_mode)
+        || (params.net.model_path != params_.net.model_path || params.is_blue != params_.is_blue);
 
     if (params_changed) {
         try {
-            detector_ =
-                std::make_unique<YOLOXDetector>(new_params.net_params.MODEL_PATH, new_params);
+            detector_ = std::make_unique<YOLOXDetector>(
+                ament_index_cpp::get_package_share_directory("autoaim_armor_detector") + "/model/"
+                    + params.net.model_path,
+                params
+            );
         } catch (const std::exception& e) {
             RCLCPP_ERROR(
                 rclcpp::get_logger("OVNetArmorEnergyDetector"),
@@ -555,7 +563,7 @@ void OVNetArmorEnergyDetector::set_params(void* params) {
         }
     }
 
-    params_ = new_params;
+    params_ = params;
 }
 
 cv::Mat OVNetArmorEnergyDetector::get_debug_image() {

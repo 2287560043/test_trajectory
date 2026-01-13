@@ -10,7 +10,6 @@
  */
 
 #include "autoaim_armor_detector/DetectStream.hpp"
-#include "OVNetArmorEnergyDetector.hpp"
 #include <autoaim_utilities/PnPSolver.hpp>
 #include <memory>
 #include <rclcpp/logger.hpp>

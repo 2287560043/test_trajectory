@@ -10,6 +10,7 @@
  */
 
 #pragma once
+#include "armor_detector_parameters.hpp"
 #include "autoaim_armor_detector/BaseDetector.hpp"
 #include "autoaim_interfaces/msg/detail/debug_armors__struct.hpp"
 #include "autoaim_interfaces/msg/detail/debug_lights__struct.hpp"
@@ -20,27 +21,7 @@
 
 namespace helios_cv {
 
-struct TraditionalArmorParams: public BaseParams {
-    double number_classifier_thresh;
-    double binary_threshold;
-    typedef struct LightParams {
-        double min_ratio;
-        double max_ratio;
-        double max_angle;
-    } LightParams;
-    LightParams light_params;
-    typedef struct ArmorParams {
-        double min_light_ratio;
-        double min_small_center_distance;
-        double max_small_center_distance;
-        double min_large_center_distance;
-        double max_large_center_distance;
-        double max_angle;
-    } ArmorParams;
-    ArmorParams armor_params;
 
-    TraditionalArmorParams() = default;
-};
 struct TraditionalArmorDebugImage: public DebugImages {
     cv::Mat number_img;
     cv::Mat binary_img;
@@ -54,13 +35,13 @@ struct TraditionalArmorDebugInfo: public DebugInfos {
 
 class TraditionalArmorDetector: public BaseDetector {
 public:
-    explicit TraditionalArmorDetector(const TraditionalArmorParams& params);
+    explicit TraditionalArmorDetector(const detector_node::Params& params);
 
     ~TraditionalArmorDetector() = default;
 
     std::vector<Armor> detect_armors(cv::Mat image) final;
 
-    void set_params(void* params) final;
+    void updateParams(const detector_node::Params& params) final;
 
     cv::Mat get_debug_image() final;
 
@@ -81,7 +62,7 @@ private:
 
     void get_all_number_images(const std::vector<Armor>& armors);
 
-    TraditionalArmorParams params_;
+     detector_node::Params params_;
 
     TraditionalArmorDebugImage debug_images_;
     TraditionalArmorDebugInfo debug_infos_;

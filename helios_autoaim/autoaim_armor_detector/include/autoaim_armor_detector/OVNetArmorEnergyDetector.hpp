@@ -27,6 +27,7 @@
 
 // custum utilities
 // #include "autoaim_utilities/Armor.hpp"
+#include "armor_detector_parameters.hpp"
 #include "autoaim_utilities/ThreadPool.hpp"
 
 // openvino
@@ -37,20 +38,6 @@
 #include "rclcpp/rclcpp.hpp"
 
 namespace helios_cv {
-
-struct OVNetArmorEnergyDetectorParams: public BaseParams {
-    double classifier_threshold;
-    double min_large_center_distance;
-    typedef struct OVNetParams {
-        std::string MODEL_PATH;
-        int NUM_CLASS; //类别总数 9
-        int NUM_COLORS; //颜色 2
-        float NMS_THRESH; // NMS阈值 0.2
-        int NUM_APEX; // 4
-        int POOL_NUM; // Thread number 3
-    } OVNetParams;
-    OVNetParams net_params;
-};
 
 struct ArmorsStamped: public Armors {
     rclcpp::Time stamp;
@@ -72,7 +59,7 @@ struct OVNetArmorEnergyDebugImages: public DebugImages {
 
 class YOLOXDetector {
 public:
-    YOLOXDetector(const std::string& model_path, const OVNetArmorEnergyDetectorParams& params) {
+    YOLOXDetector(const std::string& model_path, const detector_node::Params& params) {
         initialize(model_path, params);
     }
 
@@ -113,7 +100,7 @@ private:
         float conf;
     };
 
-    void initialize(const std::string& model_path, const OVNetArmorEnergyDetectorParams& params);
+    void initialize(const std::string& model_path, const  detector_node::Params& params);
 
     std::vector<Object> process(const ov::Tensor& output_tensor);
 
@@ -136,7 +123,7 @@ private:
         std::vector<GridAndStride>& grid_strides
     );
 
-    void update_params(const OVNetArmorEnergyDetectorParams& new_params);
+    void update_params(const  detector_node::Params& new_params);
     ArmorType judge_armor_type(const Armor& armor);
 
     void draw_objects(cv::Mat& frame, const ArmorsStamped& armors_stamped);
@@ -152,7 +139,7 @@ private:
     float scale_x_;
     float scale_y_;
 
-    OVNetArmorEnergyDetectorParams params_;
+    detector_node::Params params_;
 
     cv::Mat debug_image;
     std::mutex debug_image_mutex;
@@ -172,7 +159,7 @@ private:
 };
 class OVNetArmorEnergyDetector: public BaseDetector {
 public:
-    explicit OVNetArmorEnergyDetector(const OVNetArmorEnergyDetectorParams& params);
+    explicit OVNetArmorEnergyDetector(const detector_node::Params& params);
 
     ~OVNetArmorEnergyDetector();
 
@@ -180,7 +167,7 @@ public:
 
     // std::vector<ArmorStamped> detect_armors(const ImageStamped& image_stamped) final;
 
-    void set_params(void* params) final;
+    void updateParams(const detector_node::Params& params) final;
 
     cv::Mat get_debug_image() final;
 
@@ -199,7 +186,7 @@ private:
     OVNetArmorEnergyDebugImages debug_images_;
     DebugInfos debug_infos_;
 
-    OVNetArmorEnergyDetectorParams params_;
+    detector_node::Params params_;
 
     rclcpp::Logger logger_ = rclcpp::get_logger("OVNetArmorEnergyDetector");
 

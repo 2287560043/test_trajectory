@@ -14,8 +14,10 @@
 #include <opencv2/core/quaternion.hpp>
 #include <rclcpp/logger.hpp>
 #include <rclcpp/logging.hpp>
+#include <utility>
 
 #include "BaseDetector.hpp"
+#include "armor_detector_parameters.hpp"
 #include "autoaim_utilities/PnPSolver.hpp"
 namespace helios_cv {
 class ArmorDetectStream {
@@ -26,9 +28,14 @@ public:
     ):
         detector_(std::move(detector)),
         pnp_solver_(std::move(pnp_solver)) {}
-    autoaim_interfaces::msg::Armors
-    detect(cv::Mat image, void* extra_param = nullptr);
+    autoaim_interfaces::msg::Armors detect(cv::Mat image, void* extra_param = nullptr);
 
+    void changeDetector(std::unique_ptr<BaseDetector> detector) {
+        detector_ = std::move(detector);
+    }
+    void updateParams(const detector_node::Params& params) {
+        detector_->updateParams(params);
+    }
     cv::Mat get_debug_images() {
         return detector_->get_debug_image();
     }

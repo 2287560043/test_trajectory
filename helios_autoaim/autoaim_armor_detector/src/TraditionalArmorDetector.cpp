@@ -1,6 +1,5 @@
 #include "autoaim_armor_detector/TraditionalArmorDetector.hpp"
 
-#include "autoaim_armor_detector/OVNetArmorEnergyDetector.hpp"
 #include <ament_index_cpp/get_package_share_directory.hpp>
 #include <autoaim_utilities/NumberClassifier.hpp>
 #include <memory>
@@ -12,15 +11,17 @@
 
 namespace helios_cv {
 
-TraditionalArmorDetector::TraditionalArmorDetector(const TraditionalArmorParams& params) {
+TraditionalArmorDetector::TraditionalArmorDetector(const detector_node::Params& params) {
+    RCLCPP_INFO(logger_,"TraditionalArmorDetector Constructed");
     params_ = params;
-    auto model_path = ament_index_cpp::get_package_share_directory("autoaim_armor_detector") + "/model/mlp.onnx";
+    auto model_path =
+        ament_index_cpp::get_package_share_directory("autoaim_armor_detector") + "/model/mlp.onnx";
     auto label_path =
         ament_index_cpp::get_package_share_directory("autoaim_armor_detector") + "/model/label.txt";
     number_classifier_ = std::make_shared<NumberClassifier>(
         model_path,
         label_path,
-        params_.number_classifier_thresh,
+        params_.traditional.number_classifier_threshold,
         std::vector<std::string> { "negative" }
     );
 }
@@ -41,8 +42,8 @@ std::vector<Armor> TraditionalArmorDetector::detect_armors(cv::Mat image) {
     return std::move(armors);
 }
 
-void TraditionalArmorDetector::set_params(void* params) {
-    params_ = *static_cast<TraditionalArmorParams*>(params);
+void TraditionalArmorDetector::updateParams(const detector_node::Params& params) {
+    params_ = params;
 }
 
 cv::Mat TraditionalArmorDetector::get_debug_image() {
@@ -54,7 +55,7 @@ cv::Mat TraditionalArmorDetector::preprocessImage(const cv::Mat& input) {
     cv::cvtColor(input, gray_img, cv::COLOR_RGB2GRAY);
 
     cv::Mat binary_img;
-    cv::threshold(gray_img, binary_img, params_.binary_threshold, 255, cv::THRESH_BINARY);
+    cv::threshold(gray_img, binary_img, params_.traditional.binary_thres, 255, cv::THRESH_BINARY);
 
     debug_images_.result_img = input.clone();
     return binary_img;
@@ -140,9 +141,9 @@ bool TraditionalArmorDetector::isLight(const Light& possible_light) {
     // The ratio of light (short side / long side)
     float ratio = possible_light.width / possible_light.length;
     bool ratio_ok =
-        params_.light_params.min_ratio < ratio && ratio < params_.light_params.max_ratio;
+        params_.traditional.light.min_ratio < ratio && ratio < params_.traditional.light.max_ratio;
 
-    bool angle_ok = possible_light.tilt_angle < params_.light_params.max_angle;
+    bool angle_ok = possible_light.tilt_angle < params_.traditional.light.max_angle;
 
     bool is_light = ratio_ok && angle_ok;
 
@@ -186,27 +187,29 @@ ArmorType TraditionalArmorDetector::isArmor(const Light& light_1, const Light& l
     // Ratio of the length of 2 lights (short side / long side)
     float light_length_ratio = light_1.length < light_2.length ? light_1.length / light_2.length
                                                                : light_2.length / light_1.length;
-    bool light_ratio_ok = light_length_ratio > params_.armor_params.min_light_ratio;
+    bool light_ratio_ok = light_length_ratio > params_.traditional.armor.min_light_ratio;
 
     // Distance between the center of 2 lights (unit : light length)
     float avg_light_length = (light_1.length + light_2.length) / 2;
     float center_distance = cv::norm(light_1.center - light_2.center) / avg_light_length;
-    bool center_distance_ok = (params_.armor_params.min_small_center_distance <= center_distance
-                               && center_distance < params_.armor_params.max_small_center_distance)
-        || (params_.armor_params.min_large_center_distance <= center_distance
-            && center_distance < params_.armor_params.max_large_center_distance);
+    bool center_distance_ok =
+        (params_.traditional.armor.min_small_center_distance <= center_distance
+         && center_distance < params_.traditional.armor.max_small_center_distance)
+        || (params_.traditional.armor.min_large_center_distance <= center_distance
+            && center_distance < params_.traditional.armor.max_large_center_distance);
     // Angle of light center connection
     cv::Point2f diff = light_1.center - light_2.center;
     float angle = std::abs(std::atan(diff.y / diff.x)) / CV_PI * 180;
-    bool angle_ok = angle < params_.armor_params.max_angle;
+    bool angle_ok = angle < params_.traditional.armor.max_angle;
     bool is_armor = light_ratio_ok && center_distance_ok && angle_ok;
 
     // Judge armor type
     ArmorType type;
     if (is_armor) {
         // RCLCPP_WARN(logger_, "center_distance : %f", center_distance);
-        type = center_distance > params_.armor_params.min_large_center_distance ? ArmorType::LARGE
-                                                                                : ArmorType::SMALL;
+        type = center_distance > params_.traditional.armor.min_large_center_distance
+            ? ArmorType::LARGE
+            : ArmorType::SMALL;
     } else {
         type = ArmorType::INVALID;
     }
@@ -275,8 +278,6 @@ void TraditionalArmorDetector::draw_results(const std::vector<Armor>& armors) {
             );
         }
     }
-    // Draw image center
-    cv::circle(debug_images_.result_img, cam_center_, 5, cv::Scalar(255, 0, 0), 2);
     // Draw latency
     std::stringstream latency_ss;
     get_all_number_images(armors);

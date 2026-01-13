@@ -242,13 +242,13 @@ def generate_launch_description():
             executable='component_container_mt',
             # parameters=[node_params],
             composable_node_descriptions=[
-                # ComposableNode(
-                #     package='camera_imu_bridge',
-                #     plugin='helios_cv::CameraImuBridgeNode',
-                #     name='camera_imu_bridge',
-                #     parameters=[node_params],
-                #     extra_arguments=[{'use_intra_process_comms': True}]
-                # ),
+                ComposableNode(
+                    package='camera_imu_bridge',
+                    plugin='helios_cv::CameraImuBridgeNode',
+                    name='camera_imu_bridge',
+                    parameters=[node_params],
+                    extra_arguments=[{'use_intra_process_comms': True}]
+                ),
                 ComposableNode(
                     package='autoaim_armor_detector',
                     plugin='helios_cv::ArmorDetectorNode',
@@ -262,10 +262,10 @@ def generate_launch_description():
             output='both',
         ),
 
-        # robot_state_publisher,
-        # autoaim_debugger,
-        # delay_armor_tracker_node,
-        # delay_energy_tracker_node,
+        robot_state_publisher,
+        autoaim_debugger,
+        delay_armor_tracker_node,
+        delay_energy_tracker_node,
 
         #cam_detector,
         # delay_autoaim_bridge_node,

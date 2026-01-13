@@ -1,12 +1,13 @@
-#include <autoaim_armor_detector/ArmorDetectorFactory.hpp>
+#include "autoaim_interfaces/msg/receive_data.hpp"
 #include <ament_index_cpp/get_package_share_directory.hpp>
+#include <autoaim_armor_detector/ArmorDetectorFactory.hpp>
 #include <autoaim_armor_detector/ArmorDetectorNode.hpp>
 #include <autoaim_armor_detector/DetectStream.hpp>
 #include <autoaim_utilities/Armor.hpp>
 #include <autoaim_utilities/PnPSolver.hpp>
 #include <camera_info_manager/camera_info_manager.hpp>
 #include <memory>
-#include "autoaim_interfaces/msg/receive_data.hpp"
+#include <mutex>
 #include <opencv2/core.hpp>
 #include <rclcpp/logging.hpp>
 #include <rclcpp/parameter.hpp>
@@ -18,12 +19,79 @@ namespace helios_cv {
 ArmorDetectorNode::ArmorDetectorNode(const rclcpp::NodeOptions& options):
     rclcpp::Node("armor_detector_node", options) {
     initParameters();
-    initDectors();
     initInterfaces();
+    initDectors();
     initMarker();
 }
 
+template<typename T>
+void ArmorDetectorNode::registerParamsUpdateHandle(const std::string& name, T& inside_param) {
+    params_update_handle_table_.emplace(
+        name,
+        [this, &inside_param](const rclcpp::Parameter& param) {
+            if constexpr (std::is_same_v<T, bool>) {
+                inside_param = param.as_bool();
+            } else if constexpr (std::is_same_v<T, int64_t>) {
+                inside_param = param.as_int();
+            } else if constexpr (std::is_same_v<T, double>) {
+                inside_param = param.as_double();
+            } else if constexpr (std::is_same_v<T, std::string>) {
+                inside_param = param.as_string();
+            } else {
+                static_assert(!sizeof(T*), "Unsupported parameter type");
+            }
+            RCLCPP_INFO(get_logger(), "%s updated", param.get_name().c_str());
+        }
+    );
+}
+
 void ArmorDetectorNode::initParameters() {
+    registerParamsUpdateHandle("debug", params_.debug);
+    registerParamsUpdateHandle("is_blue", params_.is_blue);
+    registerParamsUpdateHandle("autoaim_mode", params_.autoaim_mode);
+    registerParamsUpdateHandle("image_topic", params_.image_topic);
+    registerParamsUpdateHandle("use_projection", params_.use_projection);
+    registerParamsUpdateHandle("use_traditional", params_.use_traditional);
+    registerParamsUpdateHandle("traditional.binary_thres", params_.traditional.binary_thres);
+    registerParamsUpdateHandle(
+        "traditional.number_classifier_threshold",
+        params_.traditional.number_classifier_threshold
+    );
+    registerParamsUpdateHandle("traditional.light.max_angle", params_.traditional.light.max_angle);
+    registerParamsUpdateHandle("traditional.light.max_ratio", params_.traditional.light.max_ratio);
+    registerParamsUpdateHandle("traditional.light.min_ratio", params_.traditional.light.min_ratio);
+    registerParamsUpdateHandle(
+        "traditional.armor.min_light_ratio",
+        params_.traditional.armor.min_light_ratio
+    );
+    registerParamsUpdateHandle(
+        "traditional.armor.min_small_center_distance",
+        params_.traditional.armor.min_small_center_distance
+    );
+    registerParamsUpdateHandle(
+        "traditional.armor.max_small_center_distance",
+        params_.traditional.armor.max_small_center_distance
+    );
+    registerParamsUpdateHandle(
+        "traditional.armor.min_large_center_distance",
+        params_.traditional.armor.min_large_center_distance
+    );
+    registerParamsUpdateHandle(
+        "traditional.armor.max_large_center_distance",
+        params_.traditional.armor.max_large_center_distance
+    );
+    registerParamsUpdateHandle("traditional.armor.max_angle", params_.traditional.armor.max_angle);
+    registerParamsUpdateHandle("net.model_path", params_.net.model_path);
+    registerParamsUpdateHandle(
+        "net.net_classifier_threshold",
+        params_.net.net_classifier_threshold
+    );
+    registerParamsUpdateHandle("net.num_class", params_.net.num_class);
+    registerParamsUpdateHandle("net.num_colors", params_.net.num_colors);
+    registerParamsUpdateHandle("net.nms_thresh", params_.net.nms_thresh);
+    registerParamsUpdateHandle("net.num_apex", params_.net.num_apex);
+    registerParamsUpdateHandle("net.pool_num", params_.net.pool_num);
+
     param_listener_ = std::make_shared<ParamListener>(this->get_node_parameters_interface());
     params_ = param_listener_->get_params();
     armor_use_traditional_ = params_.use_traditional;
@@ -36,12 +104,44 @@ void ArmorDetectorNode::initParameters() {
         frame_namespace_.erase(frame_namespace_.begin());
         frame_namespace_ = frame_namespace_ + "_";
     }
+    params_callback_handle_ = this->add_on_set_parameters_callback(
+        std::bind(&ArmorDetectorNode::onParametersChanged, this, std::placeholders::_1)
+    );
 }
+
 rcl_interfaces::msg::SetParametersResult
-on_parameter_event(const std::vector<rclcpp::Parameter>& params) {
-    for (auto param: params) {
-        if (param.get_name() == "use_traditional") {}
+ArmorDetectorNode::onParametersChanged(const std::vector<rclcpp::Parameter>& params) {
+    std::lock_guard<std::mutex> lock(detector_mutex_);
+    auto is_use_traditional_changed = false;
+    for (const auto& param: params) {
+        if (param.get_name().rfind("detector.result_img.", 0) == 0) {
+            continue;
+        }
+        auto it = params_update_handle_table_.find(param.get_name());
+
+        if (it != params_update_handle_table_.end()) {
+            it->second(param);
+        }
+        if (param.get_name() == "use_traditional") {
+            is_use_traditional_changed = true;
+        }
     }
+    if (is_use_traditional_changed) {
+        RCLCPP_INFO(get_logger(), "use_traditional changed");
+        RCLCPP_INFO(get_logger(), "now use_traditional's value is %ld", params_.use_traditional);
+        if (armor_detect_stream_) {
+            armor_detect_stream_->changeDetector(createArmorDetector(params_));
+            armor_detect_stream_->updateParams(params_);
+        }
+    } else {
+        if (armor_detect_stream_) {
+            armor_detect_stream_->updateParams(params_);
+        }
+    }
+
+    rcl_interfaces::msg::SetParametersResult result;
+    result.successful = true;
+    return result;
 }
 
 void ArmorDetectorNode::initInterfaces() {
@@ -104,8 +204,7 @@ void ArmorDetectorNode::initInterfaces() {
 }
 
 void ArmorDetectorNode::initDectors() {
-    detector_factory_ = std::make_unique<DetectorFactory>();
-    detector_ = std::move(detector_factory_->createArmorDetector(params_));
+    detector_ = std::move(createArmorDetector(params_));
 }
 void ArmorDetectorNode::initMarker() {
     armor_marker_.ns = "armors";
@@ -130,15 +229,13 @@ void ArmorDetectorNode::initMarker() {
 }
 
 void ArmorDetectorNode::armorImageCallback(sensor_msgs::msg::Image::UniquePtr image_msg) {
+    std::lock_guard<std::mutex> lock(detector_mutex_);
     if (!armor_detect_stream_) {
         return;
     }
-    // convert image msg to cv::Mat
     auto image_header = image_msg->header;
-
     auto image =
         cv_bridge::toCvShare(std::move(image_msg), sensor_msgs::image_encodings::RGB8)->image;
-    // Get transform
     geometry_msgs::msg::TransformStamped ts_odom2cam, ts_cam2odom;
     double yaw;
 
@@ -181,7 +278,6 @@ void ArmorDetectorNode::armorImageCallback(sensor_msgs::msg::Image::UniquePtr im
         RCLCPP_ERROR(get_logger(), "Error while transforming %s", ex.what());
         return;
     }
-    // detect
 
     ArmorTransformInfo armor_transform_info { ros2cv(ts_odom2cam.transform.rotation),
                                               ros2cv(ts_cam2odom.transform.rotation),
@@ -189,7 +285,6 @@ void ArmorDetectorNode::armorImageCallback(sensor_msgs::msg::Image::UniquePtr im
     armors_msg_ = armor_detect_stream_->detect(image, &armor_transform_info);
     armors_msg_.header = image_header;
 
-    // publish
     armors_pub_->publish(armors_msg_);
     rclcpp::Time now = this->get_clock()->now();
     RCLCPP_INFO(
@@ -197,7 +292,7 @@ void ArmorDetectorNode::armorImageCallback(sensor_msgs::msg::Image::UniquePtr im
         "time cost: %.2f ms",
         (now - rclcpp::Time(image_header.stamp)).seconds() * 1000.0
     );
-    // debug info
+
     if (params_.debug) {
         publish_debug_infos();
         publishMarkers();
@@ -237,7 +332,6 @@ ArmorDetectorNode::~ArmorDetectorNode() {
     result_img_pub_.shutdown();
     detector_.reset();
     pnp_solver_.reset();
-    detector_factory_.reset();
     param_listener_.reset();
     RCLCPP_INFO(logger_, "DetectorNode destructed");
 }
