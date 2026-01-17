@@ -153,8 +153,8 @@ protected:
 
   double m_score_tolerance = 1.0;
 
-  // target_state = [x, vx, y, vy, z, dz, r1, r2, yaw, vyaw]
-  //                 0  1   2  3   4  5   6   7   8    9     
+  // target_state = [x, vx, y, vy, z, vz, r1, r2, yaw, vyaw, dz]
+  //                 0  1   2  3   4  5   6   7   8    9     10    
   Eigen::VectorXd target_state_;
 
 private:

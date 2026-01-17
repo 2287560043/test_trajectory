@@ -31,24 +31,25 @@ ExtendedKalmanFilter StandardObserver::set_ekf(double dt)
     Eigen::VectorXd x_new = x;
     x_new(0) += x(1) * dt;
     x_new(2) += x(3) * dt;
-    // x_new(4) += x(5) * dt;
+    x_new(4) += x(5) * dt;
     x_new(8) += x(9) * dt;
     return x_new;
   };
   auto j_f = [dt, this](const Eigen::VectorXd&) {
-    Eigen::MatrixXd f(10, 10);
+    Eigen::MatrixXd f(11, 11);
     // clang-format off
-        //     xc vxc          yc vyc          z1 z2 r1 r2 yaw vyaw
-        f <<   1, dt,          0, 0,           0, 0, 0, 0, 0, 0,
-               0, 1,           0, 0,           0, 0, 0, 0, 0, 0,
-               0, 0,           1, dt,          0, 0, 0, 0, 0, 0,
-               0, 0,           0, 1,           0, 0, 0, 0, 0, 0,
-               0, 0,           0, 0,           1, 0, 0, 0, 0, 0,
-               0, 0,           0, 0,           0, 1, 0, 0, 0, 0,
-               0, 0,           0, 0,           0, 0, 1, 0, 0, 0,
-               0, 0,           0, 0,           0, 0, 0, 1, 0, 0,
-               0, 0,           0, 0,           0, 0, 0, 0, 1, dt,
-               0, 0,           0, 0,           0, 0, 0, 0, 0, 1;
+        //     xc vxc          yc vyc          z1 vz  r1 r2 yaw vyaw dz
+        f <<   1, dt,          0, 0,           0, 0,  0, 0, 0,  0,   0,
+               0, 1,           0, 0,           0, 0,  0, 0, 0,  0,   0,
+               0, 0,           1, dt,          0, 0,  0, 0, 0,  0,   0,
+               0, 0,           0, 1,           0, 0,  0, 0, 0,  0,   0,
+               0, 0,           0, 0,           1, dt, 0, 0, 0,  0,   0,
+               0, 0,           0, 0,           0, 1,  0, 0, 0,  0,   0,
+               0, 0,           0, 0,           0, 0,  1, 0, 0,  0,   0,
+               0, 0,           0, 0,           0, 0,  0, 1, 0,  0,   0,
+               0, 0,           0, 0,           0, 0,  0, 0, 1,  dt,  0,
+               0, 0,           0, 0,           0, 0,  0, 0, 0,  1,   0,
+               0, 0,           0, 0,           0, 0,  0, 0, 0,  0,   1;
     // clang-format on
     return f;
   };
@@ -60,14 +61,14 @@ ExtendedKalmanFilter StandardObserver::set_ekf(double dt)
       Eigen::VectorXd z(8);
       double xc = x(0), yc = x(2), yaw1 = x(8) + sec1 * M_PI_2, r1 = x(6 + sec1 % 2);
       double yaw2 = x(8) + sec2 * M_PI_2, r2 = x(6 + sec2 % 2);
-      z(0) = xc - r1 * cos(yaw1);  // xa1
-      z(1) = yc - r1 * sin(yaw1);  // ya1
-      z(2) = x(4 + sec1 % 2);      // za1
-      z(3) = yaw1;                 // yaw1
-      z(4) = xc - r2 * cos(yaw2);  // xa2
-      z(5) = yc - r2 * sin(yaw2);  // ya2
-      z(6) = x(4 + sec2 % 2);      // za2
-      z(7) = yaw2;                 // yaw2
+      z(0) = xc - r1 * cos(yaw1);             // xa1
+      z(1) = yc - r1 * sin(yaw1);             // ya1
+      z(2) = x(4) + (sec1 % 2) ? 0 : x(10);   // za1
+      z(3) = yaw1;                            // yaw1
+      z(4) = xc - r2 * cos(yaw2);             // xa2
+      z(5) = yc - r2 * sin(yaw2);             // ya2
+      z(6) = x(4) + (sec2 % 2) ? 0 : x(10);   // za2
+      z(7) = yaw2;                            // yaw2
       return z;
     }
     else
@@ -75,10 +76,10 @@ ExtendedKalmanFilter StandardObserver::set_ekf(double dt)
       int sec = armor_match_.begin()->second;
       Eigen::VectorXd z(4);
       double xc = x(0), yc = x(2), yaw = x(8) + sec * M_PI_2, r = x(6 + sec % 2);
-      z(0) = xc - r * cos(yaw);  // xa
-      z(1) = yc - r * sin(yaw);  // ya
-      z(2) = x(4 + sec % 2);     // za
-      z(3) = yaw;                // yaw
+      z(0) = xc - r * cos(yaw);             // xa
+      z(1) = yc - r * sin(yaw);             // ya
+      z(2) = x(4) + (sec % 2) ? 0 : x(10);  // za
+      z(3) = yaw;                           // yaw
       return z;
     }
   };
@@ -91,15 +92,16 @@ ExtendedKalmanFilter StandardObserver::set_ekf(double dt)
       double yaw1 = x(8) + sec1 * M_PI_2, r1 = x(6 + sec1 % 2);
       double yaw2 = x(8) + sec2 * M_PI_2, r2 = x(6 + sec2 % 2);
       // clang-format off
-            //  xc   vxc  yc    vyc  z1              z2        r1                            r2                        yaw                   vyaw
-            h <<1,   0,   0,    0,   0,              0,        -((sec1 + 1) % 2) * cos(yaw1), -(sec1 % 2) * cos(yaw1), r1 * sin(yaw1),       0,
-                0,   0,   1,    0,   0,              0,        -((sec1 + 1) % 2) * sin(yaw1), -(sec1 % 2) * sin(yaw1), -r1 * cos(yaw1),      0,
-                0,   0,   0,    0,   (sec1 + 1) % 2, sec1 % 2, 0,                             0,                       0,                    0,        
-                0,   0,   0,    0,   0,              0,        0,                             0,                       1,                    0,
-                1,   0,   0,    0,   0,              0,        -((sec2 + 1) % 2) * cos(yaw2), -(sec2 % 2) * cos(yaw2), r2 * sin(yaw2),       0,
-                0,   0,   1,    0,   0,              0,        -((sec2 + 1) % 2) * sin(yaw2), -(sec2 % 2) * sin(yaw2), -r2 * cos(yaw2),      0,
-                0,   0,   0,    0,   (sec2 + 1) % 2, sec2 % 2, 0,                             0,                       0,                    0,        
-                0,   0,   0,    0,   0,              0,        0,                             0,                       1,                    0;
+            //  0.   1.   2.    3.   4.            
+            //  xc   vxc  yc    vyc  z1              vz        r1                            r2                        yaw                   vyaw   dz
+            h <<1,   0,   0,    0,   0,              0,        -((sec1 + 1) % 2) * cos(yaw1), -(sec1 % 2) * cos(yaw1), r1 * sin(yaw1),       0,     0,
+                0,   0,   1,    0,   0,              0,        -((sec1 + 1) % 2) * sin(yaw1), -(sec1 % 2) * sin(yaw1), -r1 * cos(yaw1),      0,     0,
+                0,   0,   0,    0,   (sec1 + 1) % 2, sec1 % 2, 0,                             0,                       0,                    0,     0,   
+                0,   0,   0,    0,   0,              0,        0,                             0,                       1,                    0,     0,
+                1,   0,   0,    0,   0,              0,        -((sec2 + 1) % 2) * cos(yaw2), -(sec2 % 2) * cos(yaw2), r2 * sin(yaw2),       0,     0,
+                0,   0,   1,    0,   0,              0,        -((sec2 + 1) % 2) * sin(yaw2), -(sec2 % 2) * sin(yaw2), -r2 * cos(yaw2),      0,     0,
+                0,   0,   0,    0,   (sec2 + 1) % 2, sec2 % 2, 0,                             0,                       0,                    0,     0, 
+                0,   0,   0,    0,   0,              0,        0,                             0,                       1,                    0,     0;
       // clang-format on
       return h;
     }
