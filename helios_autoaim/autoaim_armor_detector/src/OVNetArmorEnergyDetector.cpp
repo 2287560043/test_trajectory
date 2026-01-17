@@ -92,8 +92,8 @@ void YOLOXDetector::initialize(const std::string& model_path, const detector_nod
                 ov::hint::model_priority(ov::hint::Priority::HIGH),
                 ov::hint::execution_mode(ov::hint::ExecutionMode::PERFORMANCE),
                 ov::num_streams(1),
-                ov::cache_dir("./cache"),
-                ov::cache_mode(ov::CacheMode::OPTIMIZE_SPEED),
+                // ov::cache_dir("./cache"),
+                // ov::cache_mode(ov::CacheMode::OPTIMIZE_SPEED),
                 ov::hint::enable_cpu_pinning(true),
             };
         } else {
@@ -101,7 +101,7 @@ void YOLOXDetector::initialize(const std::string& model_path, const detector_nod
                 ov::hint::performance_mode(ov::hint::PerformanceMode::LATENCY),
                 ov::hint::execution_mode(ov::hint::ExecutionMode::PERFORMANCE),
                 ov::num_streams(1),
-                ov::cache_dir("./cache"),
+                // ov::cache_dir("./cache"),
                 ov::hint::inference_precision(ov::element::f32),
                 ov::inference_num_threads(std::thread::hardware_concurrency()),
                 ov::hint::enable_cpu_pinning(true),
