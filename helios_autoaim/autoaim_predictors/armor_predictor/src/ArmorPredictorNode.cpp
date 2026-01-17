@@ -10,15 +10,7 @@
  */
 
 #include "ArmorPredictorNode.hpp"
-
-#include <armor_predictor/StandardObserver.hpp>
-#include <autoaim_utilities/Armor.hpp>
-#include <memory>
-#include <rclcpp/logging.hpp>
-#include <rclcpp/qos.hpp>
-#include <rclcpp/rate.hpp>
-#include <string>
-#include <thread>
+#include <rclcpp_lifecycle/state.hpp>
 
 namespace helios_cv
 {
@@ -119,21 +111,9 @@ void ArmorPredictorNode::create_visualization_markers()
   position_marker_.color.a = 1.0;
   position_marker_.color.g = 1.0;
 
-  linear_v_marker_.type = visualization_msgs::msg::Marker::ARROW;
-  linear_v_marker_.ns = "linear_v";
-  linear_v_marker_.scale.x = 0.03;
-  linear_v_marker_.scale.y = 0.05;
-  linear_v_marker_.color.a = 1.0;
-  linear_v_marker_.color.r = 1.0;
-  linear_v_marker_.color.g = 1.0;
-
-  angular_v_marker_.type = visualization_msgs::msg::Marker::ARROW;
-  angular_v_marker_.ns = "angular_v";
-  angular_v_marker_.scale.x = 0.03;
-  angular_v_marker_.scale.y = 0.05;
-  angular_v_marker_.color.a = 1.0;
-  angular_v_marker_.color.b = 1.0;
-  angular_v_marker_.color.g = 1.0;
+  text_marker_.ns = "armor_text";
+  text_marker_.type = visualization_msgs::msg::Marker::TEXT_VIEW_FACING;
+  text_marker_.color.a = 1.0;
 
   target_armor_marker_.ns = "armors";
   target_armor_marker_.type = visualization_msgs::msg::Marker::CUBE;
@@ -148,6 +128,42 @@ void ArmorPredictorNode::create_visualization_markers()
 
 void ArmorPredictorNode::armor_predictor_callback(autoaim_interfaces::msg::Armors::SharedPtr armors_msg)
 {
+  geometry_msgs::msg::TransformStamped ts_odom2cam, ts_cam2odom;
+  try {
+      ts_odom2cam = tf2_buffer_->lookupTransform(
+          frame_namespace_ + "camera_optical_frame",
+          frame_namespace_ + "odoom",
+          armors_msg->header.stamp,
+          rclcpp::Duration::from_seconds(0.02)
+      );
+      ts_cam2odom = tf2_buffer_->lookupTransform(
+          frame_namespace_ + "odoom",
+          frame_namespace_ + "camera_optical_frame",
+          armors_msg->header.stamp,
+          rclcpp::Duration::from_seconds(0.02)
+      );
+      auto odom2yawlink = tf2_buffer_->lookupTransform(
+          frame_namespace_ + "yaw_link",
+          frame_namespace_ + "odoom",
+          armors_msg->header.stamp,
+          rclcpp::Duration::from_seconds(0.02)
+      );
+      tf2::Quaternion q(
+          odom2yawlink.transform.rotation.x,
+          odom2yawlink.transform.rotation.y,
+          odom2yawlink.transform.rotation.z,
+          odom2yawlink.transform.rotation.w
+      );
+      tf2::Matrix3x3 m(q);
+      // blank roll and pitch, not using them
+      double roll, pitch, yaw;
+      m.getRPY(roll, pitch, yaw);
+      gimbal_yaw_ = yaw;
+  } catch (const tf2::TransformException& ex) {
+      RCLCPP_ERROR_ONCE(get_logger(), "Error while transforming %s", ex.what());
+      return;
+  }
+  
   if (param_listener_->is_old(params_))
   {
     params_ = param_listener_->get_params();
@@ -159,7 +175,12 @@ void ArmorPredictorNode::armor_predictor_callback(autoaim_interfaces::msg::Armor
   }
   // build time series
   rclcpp::Time time = armors_msg->header.stamp;
+
+  // dt = predict_time + 下位机耗时 + detect_time ????
   double dt = time.seconds() - time_predictor_start_;
+  if (dt > 1.0) {
+    dt = 0.01;
+  }
   time_predictor_start_ = time.seconds();
 
   if (dt < 0) {
@@ -195,12 +216,15 @@ void ArmorPredictorNode::armor_predictor_callback(autoaim_interfaces::msg::Armor
   }
 
   // doing predict
-  target_msg_ = vehicle_observer_->predict_target(*armors_msg, dt);
+  // RCLCPP_INFO(logger_, "gimbal_yaw: %.10f, dt: %.10f", gimbal_yaw_, dt);
+
+  target_msg_ = vehicle_observer_->predict_target(*armors_msg, dt, gimbal_yaw_, 28.0);
   target_msg_.gimbal_id = gimbal_id_;
   // choose predict mode
   update_predictor_type(vehicle_observer_);
   Eigen::Vector3d target_position =
       Eigen::Vector3d{ target_msg_.position.x, target_msg_.position.y, target_msg_.position.z };
+  target_msg_.tracking = 1;
   if (target_msg_.tracking)
   {
     last_target_distance_ = target_position.norm();
@@ -217,91 +241,108 @@ void ArmorPredictorNode::armor_predictor_callback(autoaim_interfaces::msg::Armor
 
 void ArmorPredictorNode::get_marker_array(autoaim_interfaces::msg::Target target)
 {
-  /// Clear marker array
   target_marker_array_.markers.clear();
+  
   target_armor_marker_.header = target.header;
   position_marker_.header = target.header;
-  linear_v_marker_.header = target.header;
-  angular_v_marker_.header = target.header;
-  /// Push target marker
+  text_marker_.header = target.header;
+
+  position_marker_.ns = "position";
+  position_marker_.id = 0;
+  if (target.tracking) {
+    position_marker_.action = visualization_msgs::msg::Marker::ADD;
+    position_marker_.pose.position = target.position;
+  } else {
+    position_marker_.action = visualization_msgs::msg::Marker::DELETE;
+  }
+  target_marker_array_.markers.emplace_back(position_marker_);
+
+
   if (target.tracking)
   {
-    if (target.armors_num == 1)
-    {
+    if (target.armors_num == 1) {
       target.yaw = 0;
       target.radius_1 = 0.0;
       target.radius_2 = 0.0;
       target.dz = 0.0;
-      target.v_yaw = 0;
     }
-    double yaw = target.yaw, r1 = target.radius_1, r2 = target.radius_2;
-    double xc = target.position.x, yc = target.position.y, zc = target.position.z;
-    double vxc = target.velocity.x, vyc = target.velocity.y, vzc = target.velocity.z, vyaw = target.v_yaw;
+
+    double yaw = target.yaw;
+    double r1 = target.radius_1;
+    double r2 = target.radius_2;
+    double xc = target.position.x;
+    double yc = target.position.y;
+    double zc = target.position.z;
     double dz = target.dz;
 
-    position_marker_.action = visualization_msgs::msg::Marker::ADD;
-    position_marker_.pose.position.x = xc;
-    position_marker_.pose.position.y = yc;
-    position_marker_.pose.position.z = zc + dz / 2;
-
-    linear_v_marker_.action = visualization_msgs::msg::Marker::ADD;
-    linear_v_marker_.points.clear();
-    linear_v_marker_.points.emplace_back(position_marker_.pose.position);
-    geometry_msgs::msg::Point arrow_end = position_marker_.pose.position;
-    arrow_end.x += vxc;
-    arrow_end.y += vyc;
-    arrow_end.z += vzc;
-    linear_v_marker_.points.emplace_back(arrow_end);
-
-    angular_v_marker_.action = visualization_msgs::msg::Marker::ADD;
-    angular_v_marker_.points.clear();
-    angular_v_marker_.points.emplace_back(position_marker_.pose.position);
-    arrow_end = position_marker_.pose.position;
-    arrow_end.z += vyaw / M_PI;
-    angular_v_marker_.points.emplace_back(arrow_end);
-
-    target_armor_marker_.action = visualization_msgs::msg::Marker::ADD;
-    target_armor_marker_.scale.y = target.armor_type == "SMALL" ? 0.135 : 0.23;
     bool is_current_pair = true;
     size_t a_n = target.armors_num;
     geometry_msgs::msg::Point p_a;
     double r = 0;
+
     for (size_t i = 0; i < a_n; i++)
     {
       double tmp_yaw = yaw + i * (2 * M_PI / a_n);
-      // Only 4 armors has 2 radius and height
-      if (a_n == 4)
-      {
+      
+      if (a_n == 4) {
         r = is_current_pair ? r1 : r2;
         p_a.z = zc + (is_current_pair ? 0 : dz);
         is_current_pair = !is_current_pair;
-      }
-      else
-      {
+      } else {
         r = r1;
         p_a.z = zc;
       }
       p_a.x = xc - r * cos(tmp_yaw);
       p_a.y = yc - r * sin(tmp_yaw);
 
+      target_armor_marker_.action = visualization_msgs::msg::Marker::ADD;
       target_armor_marker_.id = i;
       target_armor_marker_.pose.position = p_a;
+      
       tf2::Quaternion q;
       q.setRPY(0, target.id == "outpost" ? -0.26 : 0.26, tmp_yaw);
       target_armor_marker_.pose.orientation = tf2::toMsg(q);
+
+      target_armor_marker_.scale.y = (target.armor_type == "SMALL") ? 0.135 : 0.23;
+
+      text_marker_.action = visualization_msgs::msg::Marker::ADD;
+      text_marker_.id = i;
+      text_marker_.pose.position = p_a;
+      text_marker_.pose.position.z += 0.25; // 文字悬浮在板子上方 25cm
+
+      if (static_cast<int>(i) == target.armor_id) {
+        target_armor_marker_.color.r = 0.0; 
+        target_armor_marker_.color.g = 1.0; 
+        target_armor_marker_.color.b = 0.0;
+        
+        text_marker_.text = std::to_string(i);
+        text_marker_.scale.z = 0.2; 
+        text_marker_.color.r = 1.0; 
+        text_marker_.color.g = 1.0; 
+        text_marker_.color.b = 0.0;
+      } else {
+        target_armor_marker_.color.r = 1.0; 
+        target_armor_marker_.color.g = 1.0; 
+        target_armor_marker_.color.b = 1.0;
+
+        text_marker_.text = std::to_string(i);
+        text_marker_.scale.z = 0.2;
+        text_marker_.color.r = 1.0; 
+        text_marker_.color.g = 1.0; 
+        text_marker_.color.b = 1.0;
+      }
+
       target_marker_array_.markers.emplace_back(target_armor_marker_);
+      target_marker_array_.markers.emplace_back(text_marker_);
     }
   }
   else
   {
-    position_marker_.action = visualization_msgs::msg::Marker::DELETE;
-    linear_v_marker_.action = visualization_msgs::msg::Marker::DELETE;
-    angular_v_marker_.action = visualization_msgs::msg::Marker::DELETE;
-    target_armor_marker_.action = visualization_msgs::msg::Marker::DELETE;
+    target_armor_marker_.action = visualization_msgs::msg::Marker::DELETEALL;
+    target_marker_array_.markers.emplace_back(target_armor_marker_);
+    text_marker_.action = visualization_msgs::msg::Marker::DELETEALL;
+    target_marker_array_.markers.emplace_back(text_marker_);
   }
-  target_marker_array_.markers.emplace_back(position_marker_);
-  target_marker_array_.markers.emplace_back(linear_v_marker_);
-  target_marker_array_.markers.emplace_back(angular_v_marker_);
 
   target_marker_pub_->publish(target_marker_array_);
 }

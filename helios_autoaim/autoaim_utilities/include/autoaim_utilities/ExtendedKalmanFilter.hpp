@@ -2,6 +2,7 @@
 // Submodule of HeliosRobotSystem
 // for more see document: https://swjtuhelios.feishu.cn/docx/MfCsdfRxkoYk3oxWaazcfUpTnih?from=from_copylink
 
+#pragma once
 #include <Eigen/Core>
 #include <Eigen/Dense>
 #include <iostream>
@@ -9,9 +10,19 @@
 
 namespace helios_cv
 {
+struct EkfFuncs {
+    std::function<Eigen::VectorXd(const Eigen::VectorXd&)> f;
+    std::function<Eigen::MatrixXd(const Eigen::VectorXd&)> j_f;
+    std::function<Eigen::VectorXd(const Eigen::VectorXd&)> h;
+    std::function<Eigen::MatrixXd(const Eigen::VectorXd&)> j_h;
+    std::function<Eigen::MatrixXd(const Eigen::VectorXd&)> update_Q;
+    std::function<Eigen::MatrixXd(const Eigen::VectorXd&)> update_R;
+    std::function<Eigen::VectorXd(const Eigen::VectorXd&, const Eigen::VectorXd&)> measurement_diff;
+    Eigen::MatrixXd p0;
+};
 
 class ExtendedKalmanFilter
-{
+{  
 public:
   ExtendedKalmanFilter() = default;
 

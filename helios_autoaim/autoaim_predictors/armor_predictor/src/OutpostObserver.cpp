@@ -1,20 +1,8 @@
 // created by liuhan, Yechenyuzhu on 20214/1/16
 // Submodule of HeliosRobotSystem
 // for more see document: https://swjtuhelios.feishu.cn/docx/MfCsdfRxkoYk3oxWaazcfUpTnih?from=from_copylink
+
 #include "OutpostObserver.hpp"
-
-#include <Eigen/src/Core/Matrix.h>
-#include <Eigen/src/Geometry/Quaternion.h>
-#include <angles/angles.h>
-#include <tf2/LinearMath/Quaternion.h>
-
-#include <autoaim_interfaces/msg/detail/armor__struct.hpp>
-#include <autoaim_utilities/Armor.hpp>
-#include <cfloat>
-#include <memory>
-#include <rclcpp/logging.hpp>
-#include <tf2_geometry_msgs/tf2_geometry_msgs.hpp>
-#include <vector>
 
 namespace helios_cv
 {
@@ -86,7 +74,7 @@ OutpostObserver::OutpostObserver(const OutpostObserverParams& params) : params_(
   };
   auto measurement_diff = [this](const Eigen::VectorXd& z, const Eigen::VectorXd& input_z) -> Eigen::VectorXd {
     Eigen::VectorXd diff(4);
-    diff << z.segment(0, 3) - input_z.segment(0, 3), -angles::shortest_angular_distance(z(3), input_z(3));
+    diff << z.segment(0, 3) - input_z.segment(0, 3), -math::get_angle_diff(z(3), input_z(3));
     return diff;
   };
   Eigen::DiagonalMatrix<double, 5> p0;
@@ -99,7 +87,7 @@ void OutpostObserver::set_params(void* params)
   params_ = *static_cast<OutpostObserverParams*>(params);
 }
 
-autoaim_interfaces::msg::Target OutpostObserver::predict_target(autoaim_interfaces::msg::Armors armors, double dt)
+autoaim_interfaces::msg::Target OutpostObserver::predict_target(autoaim_interfaces::msg::Armors armors, double dt, double yaw, double bullet_speed)
 {
   dt_ = dt;
   autoaim_interfaces::msg::Target target;
@@ -308,15 +296,15 @@ void OutpostObserver::reset_kalman()
   ekf_.setState(target_state_);
 }
 
-Eigen::Vector3d OutpostObserver::state2position(const Eigen::VectorXd& state)
-{
-  double car_center_x = state(0);
-  double car_center_y = state(1);
-  double car_center_z = state(2);
-  double yaw = state(3);
-  double armor_x = car_center_x - radius_ * std::cos(yaw);
-  double armor_y = car_center_y - radius_ * std::sin(yaw);
-  return Eigen::Vector3d(armor_x, armor_y, car_center_z);
-}
+// Eigen::Vector3d OutpostObserver::state2position(const Eigen::VectorXd& state)
+// {
+//   double car_center_x = state(0);
+//   double car_center_y = state(1);
+//   double car_center_z = state(2);
+//   double yaw = state(3);
+//   double armor_x = car_center_x - radius_ * std::cos(yaw);
+//   double armor_y = car_center_y - radius_ * std::sin(yaw);
+//   return Eigen::Vector3d(armor_x, armor_y, car_center_z);
+// }
 
 }  // namespace helios_cv

@@ -1,57 +1,56 @@
 // created by liuhan, Yechenyuzhu on 2023/1/16
+// rebuild on 2025/11/28
 // Submodule of HeliosRobotSystem
-// for more see document:
-// https://swjtuhelios.feishu.cn/docx/MfCsdfRxkoYk3oxWaazcfUpTnih?from=from_copylink
+// Modified to implement Visual Center Priority (Jiaolong Style)
+
 #include "StandardObserver.hpp"
-
-#include <Eigen/src/Core/Matrix.h>
-#include <Eigen/src/Geometry/Quaternion.h>
-#include <angles/angles.h>
-#include <tf2/LinearMath/Quaternion.h>
-
-#include <autoaim_interfaces/msg/detail/armor__struct.hpp>
-#include <autoaim_utilities/Armor.hpp>
-#include <cfloat>
-#include <cmath>
-#include <geometry_msgs/msg/detail/point__struct.hpp>
-#include <geometry_msgs/msg/detail/quaternion__struct.hpp>
-#include <memory>
-#include <rclcpp/logger.hpp>
-#include <rclcpp/logging.hpp>
-#include <tf2_geometry_msgs/tf2_geometry_msgs.hpp>
-#include <vector>
+#include "BaseObserver.hpp"
+#include <autoaim_interfaces/msg/detail/pre_trajectory__struct.hpp>
+#include <autoaim_utilities/BulletTrajectory.hpp>
+#include <autoaim_utilities/Math.hpp>
 
 namespace helios_cv
 {
+const double STATIC_YAW_VEL_THRESH = 0.008;  // rad/s
+const double TOP_YAW_VEL_THRESH = 1e9; // 夏天的
+
 StandardObserver::StandardObserver(const StandardObserverParams& params) : params_(params)
 {
   find_state_ = LOST;
   // init kalman filter
-  auto f = [this](const Eigen::VectorXd& x) {
+  double dt = BaseObserver::dt_;
+  ekf_ = set_ekf(dt);
+  last_switch_time_ = rclcpp::Time(0);
+}
+
+ExtendedKalmanFilter StandardObserver::set_ekf(double dt)
+{
+  fixed_dt_ = dt;
+  auto f = [&, this](const Eigen::VectorXd& x) {
     Eigen::VectorXd x_new = x;
-    x_new(0) += x(1) * dt_;
-    x_new(2) += x(3) * dt_;
-    x_new(8) += x(9) * dt_;
+    x_new(0) += x(1) * fixed_dt_;
+    x_new(2) += x(3) * fixed_dt_;
+    x_new(8) += x(9) * fixed_dt_;
     return x_new;
   };
-  auto j_f = [this](const Eigen::VectorXd&) {
+  auto j_f = [&, this](const Eigen::VectorXd&) {
     Eigen::MatrixXd f(10, 10);
     // clang-format off
-        //     xc vxc   yc vyc   z1 z2 r1 r2 yaw vyaw
-        f <<   1, dt_,  0, 0,    0, 0, 0, 0, 0, 0,
-               0, 1,    0, 0,    0, 0, 0, 0, 0, 0,
-               0, 0,    1, dt_,  0, 0, 0, 0, 0, 0,
-               0, 0,    0, 1,    0, 0, 0, 0, 0, 0,
-               0, 0,    0, 0,    1, 0, 0, 0, 0, 0,
-               0, 0,    0, 0,    0, 1, 0, 0, 0, 0,
-               0, 0,    0, 0,    0, 0, 1, 0, 0, 0,
-               0, 0,    0, 0,    0, 0, 0, 1, 0, 0,
-               0, 0,    0, 0,    0, 0, 0, 0, 1, dt_,
-               0, 0,    0, 0,    0, 0, 0, 0, 0, 1;
+        //     xc vxc          yc vyc          z1 z2 r1 r2 yaw vyaw
+        f <<   1, fixed_dt_,   0, 0,           0, 0, 0, 0, 0, 0,
+               0, 1,           0, 0,           0, 0, 0, 0, 0, 0,
+               0, 0,           1, fixed_dt_,   0, 0, 0, 0, 0, 0,
+               0, 0,           0, 1,           0, 0, 0, 0, 0, 0,
+               0, 0,           0, 0,           1, 0, 0, 0, 0, 0,
+               0, 0,           0, 0,           0, 1, 0, 0, 0, 0,
+               0, 0,           0, 0,           0, 0, 1, 0, 0, 0,
+               0, 0,           0, 0,           0, 0, 0, 1, 0, 0,
+               0, 0,           0, 0,           0, 0, 0, 0, 1, fixed_dt_,
+               0, 0,           0, 0,           0, 0, 0, 0, 0, 1;
     // clang-format on
     return f;
   };
-  auto h = [this](const Eigen::VectorXd& x) {
+  auto h = [&](const Eigen::VectorXd& x) {
     if (armor_match_.size() == 2)
     {
       int sec1 = armor_match_.begin()->second;
@@ -118,8 +117,8 @@ StandardObserver::StandardObserver(const StandardObserverParams& params) : param
     }
   };
   // update_Q - process noise covariance matrix
-  auto update_Q = [this](const Eigen::VectorXd& X) -> Eigen::MatrixXd {
-    double t = dt_, x = params_.ekf_params.sigma2_q_xyz, y = params_.ekf_params.sigma2_q_yaw,
+  auto update_Q = [&](const Eigen::VectorXd& X) -> Eigen::MatrixXd {
+    double t = dt, x = params_.ekf_params.sigma2_q_xyz, y = params_.ekf_params.sigma2_q_yaw,
            r = params_.ekf_params.sigma2_q_r;
     double q_z_z = params_.ekf_params.sigma2_q_z;
     double q_x_x = pow(t, 4) / 4 * x, q_x_vx = pow(t, 3) / 2 * x, q_vx_vx = pow(t, 2) * x;
@@ -142,7 +141,7 @@ StandardObserver::StandardObserver(const StandardObserverParams& params) : param
     return q;
   };
   // update_R - observation noise covariance matrix
-  auto update_R = [this](const Eigen::VectorXd& z) -> Eigen::MatrixXd {
+  auto update_R = [&](const Eigen::VectorXd& z) -> Eigen::MatrixXd {
     if (armor_match_.size() == 2)
     {
       Eigen::DiagonalMatrix<double, 8> r;
@@ -164,20 +163,29 @@ StandardObserver::StandardObserver(const StandardObserverParams& params) : param
     if (armor_match_.size() == 2)
     {
       Eigen::VectorXd diff(8);
-      diff << z.segment(0, 3) - input_z.segment(0, 3), -angles::shortest_angular_distance(z(3), input_z(3)),
-          z.segment(4, 3) - input_z.segment(4, 3), -angles::shortest_angular_distance(z(7), input_z(7));
+      diff << z.segment(0, 3) - input_z.segment(0, 3), -math::get_angle_diff(z(3), input_z(3)),
+          z.segment(4, 3) - input_z.segment(4, 3), -math::get_angle_diff(z(7), input_z(7));
       return diff;
     }
     else
     {
       Eigen::VectorXd diff(4);
-      diff << z.segment(0, 3) - input_z.segment(0, 3), -angles::shortest_angular_distance(z(3), input_z(3));
+      diff << z.segment(0, 3) - input_z.segment(0, 3), -math::get_angle_diff(z(3), input_z(3));
       return diff;
     }
   };
   Eigen::DiagonalMatrix<double, 10> p0;
   p0.setIdentity();
-  ekf_ = ExtendedKalmanFilter{ f, h, j_f, j_h, update_Q, update_R, measurement_diff, p0 };
+
+  auto funcs = EkfFuncs{f, j_f, h, j_h, update_Q, update_R, measurement_diff, p0};
+  
+  return ExtendedKalmanFilter{
+      funcs.f, funcs.h, funcs.j_f, funcs.j_h,
+      funcs.update_Q, funcs.update_R, 
+      funcs.measurement_diff, funcs.p0
+  };
+
+
 }
 
 void StandardObserver::set_params(void* params)
@@ -185,229 +193,452 @@ void StandardObserver::set_params(void* params)
   params_ = *static_cast<StandardObserverParams*>(params);
 }
 
-autoaim_interfaces::msg::Target StandardObserver::predict_target(autoaim_interfaces::msg::Armors armors, double dt)
+// [新增] 辅助函数：根据 ID 获取特定装甲板的 3D 位置
+Eigen::Vector3d StandardObserver::get_armor_position(const Eigen::VectorXd& state, int armor_index)
 {
-  dt_ = dt;
+    double xc = state(0), yc = state(2), z = state(4 + armor_index % 2);
+    double r = state(6 + armor_index % 2);
+    double car_yaw = state(8);
+    
+    // 计算该装甲板的世界系 Yaw
+    double armor_yaw = car_yaw + armor_index * (M_PI / 2.0);
+    
+    return Eigen::Vector3d(
+        xc - r * cos(armor_yaw),
+        yc - r * sin(armor_yaw),
+        z
+    );
+}
+
+// [核心重构] Jiaolong Style 的装甲板选择逻辑
+// 返回值：选中的最优装甲板索引 (0-3)
+int StandardObserver::select_best_armor_id(const Eigen::VectorXd& state, double fly_time)
+{
+    // 1. 预测击中时刻的状态
+    //    简单的线性外推：位置+速度*时间, Yaw+角速度*时间
+    Eigen::VectorXd pred_state = state;
+    pred_state(0) += state(1) * fly_time; // x += vx * t
+    pred_state(2) += state(3) * fly_time; // y += vy * t
+    pred_state(8) += state(9) * fly_time; // yaw += w * t
+    
+    // 2. 遍历所有装甲板，评估 "可击打性"
+    int best_idx = -1;
+    double min_swing_cost = 1e9;      // 枪口转动代价
+    double min_wait_time = 1e9;       // 预瞄等待时间
+    bool found_direct_aim = false;    // 是否找到正对的板
+
+    double car_yaw = pred_state(8);
+    double car_w = pred_state(9);
+
+    // 车辆中心到相机的向量 (假设相机在原点 (0,0,0))
+    // ArmorNormal 理想情况下应该平行于 Camera->Center 向量（即正对相机）
+    // Camera->Center = (xc, yc)
+    double center_angle = std::atan2(pred_state(2), pred_state(0)); 
+
+    for (int i = 0; i < 4; i++) {
+        // 当前装甲板的朝向角 (World Frame)
+        double armor_yaw = car_yaw + i * (M_PI / 2.0);
+        armor_yaw = angles::normalize_angle(armor_yaw);
+
+        // --- 评估 Criteria 1: Orientation (板是否朝向相机?) ---
+        // 理想的 armor_yaw 应该等于 center_angle + PI (即从中心指向相机)
+        // 或者简单理解：装甲板法线 与 向量(装甲板->相机) 的夹角
+        // 这里使用简化计算：判断 armor_yaw 与 center_angle 的关系
+        // 实际上 armor normal 是 (cos(yaw), sin(yaw)), cam vector 是 (-x, -y)
+        
+        // 真正的板朝向角误差
+        double orientation_diff = std::abs(angles::shortest_angular_distance(armor_yaw, center_angle + M_PI));
+        
+        // 计算当前云台 Yaw 到该装甲板的 Swing Cost
+        // 注意：这里需要粗略计算装甲板的方位角
+        Eigen::Vector3d armor_pos = get_armor_position(pred_state, i);
+        double armor_azimuth = std::atan2(armor_pos.y(), armor_pos.x());
+        double swing_cost = std::abs(angles::shortest_angular_distance(gimbal_yaw_, armor_azimuth));
+
+        if (orientation_diff < MAX_ORIENTATION_ANGLE) {
+            // ---> Direct Aim (直接击打模式)
+            // 找到一个正对的板，优先选择 Swing Cost 最小的
+            if (!found_direct_aim || swing_cost < min_swing_cost) {
+                best_idx = i;
+                min_swing_cost = swing_cost;
+                found_direct_aim = true;
+            }
+        } 
+        else if (!found_direct_aim) {
+            // ---> Indirect Aim (预瞄/阴枪模式)
+            // 如果目前没有正对的板，寻找 "即将" 转过来的板
+            // 计算转到正对位置需要转过的角度
+            double angle_to_face = angles::shortest_angular_distance(armor_yaw, center_angle + M_PI);
+            
+            // 只有当旋转方向正确时，这个板才会转过来
+            // car_w > 0 (逆时针), 需要 angle_to_face > 0 吗？
+            // shortest_angular_distance 返回的是 (target - current)
+            // 如果 w > 0, 角度在增加。我们需要 target > current，即 diff > 0
+            
+            if ((car_w > 0.1 && angle_to_face > 0) || (car_w < -0.1 && angle_to_face < 0)) {
+                double time_to_face = std::abs(angle_to_face / car_w);
+                if (time_to_face < min_wait_time) {
+                    min_wait_time = time_to_face;
+                    best_idx = i;
+                }
+            }
+        }
+    }
+
+    // 兜底策略：如果都没选中（比如静止且侧身，或者算崩了），选距离最近的
+    if (best_idx == -1) {
+         return 0; // 或者保留上一次的 ID
+    }
+
+    return best_idx;
+}
+
+// [重构] 轨迹生成函数
+Eigen::Matrix<double, 4, HORIZON> StandardObserver::get_trajectory()
+{
+    Eigen::Matrix<double, 4, HORIZON> pretraj_matrix;
+    pretraj_matrix.setZero();
+    Eigen::VectorXd state = target_state_; 
+
+    if (bullet_speed_ < 10 || bullet_speed_ > 30) bullet_speed_ = 28;
+
+    // 1. 估算飞行时间 (简单估算用于选择目标)
+    double dist = std::sqrt(state(0)*state(0) + state(2)*state(2));
+    double fly_time = dist / bullet_speed_;
+
+    // 2. [关键修改] 在生成轨迹前，确定这一轮我们要打哪个 ID
+    //    Jiaolong 逻辑：一旦锁定一个 ID，就在这段轨迹中一直跟踪它，
+    //    除非它完全不可见。这里我们每帧做一次决策。
+    target_armor_id_ = select_best_armor_id(state, fly_time);
+    
+    // 如果处于平动模式（小陀螺未激活），可能需要稍微调整逻辑（选最近的即可）
+    // 但上述 orientation 逻辑在平动下也是通用的（平动时只有一个板面对相机）
+
+    Trajectory tmp_traj;
+    // Helper: 计算针对特定 ID 的 Yaw/Pitch
+    auto getYP = [&](const Eigen::VectorXd& st, int id) -> std::pair<double, double> {
+        // 获取该 ID 在该状态下的 3D 坐标
+        Eigen::Vector3d pos = get_armor_position(st, id);
+        std::vector<double> aim_pt = {pos.x(), pos.y(), pos.z()};
+        
+        tmp_traj.set(aim_pt, bullet_speed_);
+        if (!tmp_traj.solvable()) {
+            return {0.0, 0.0};
+        }
+        return {tmp_traj.yaw(), tmp_traj.pitch()};
+    };
+
+    // 初始 Yaw/Pitch
+    const auto yp0 = getYP(state, target_armor_id_);
+    yaw0_ = yp0.first; // 记录 T=0 时刻的目标 Yaw
+    
+    // 3. 生成轨迹 (EKF 预测)
+    // 使用 target_armor_id 贯穿整个时域，保证轨迹平滑追踪同一个物理装甲板
+    Eigen::VectorXd temp_state = state;
+    ExtendedKalmanFilter ekf_fwd = set_ekf(DT);
+    
+    // 计算上一时刻状态用于计算速度 (Central Difference init)
+    ExtendedKalmanFilter ekf_back = set_ekf(-DT);
+    ekf_back.setState(state); 
+    Eigen::VectorXd state_prev = ekf_back.Predict();
+    auto yp_last = getYP(state_prev, target_armor_id_);
+    auto yp_curr = yp0;
+
+    ekf_fwd.setState(state);
+
+    for (int i = 0; i < HORIZON; i++) {
+        temp_state = ekf_fwd.Predict();
+        
+        // 关键：在预测的未来时刻，依然追踪同一个 target_armor_id
+        // 即使它转过去了，我们也给出轨迹（让决策层决定是否发弹，或者在 PreAim 模式下跟随）
+        auto yp_next = getYP(temp_state, target_armor_id_);
+
+        double pred_yaw_vel = (yp_next.first - yp_last.first) / (2.0 * DT);
+        double pred_pitch_vel = (yp_next.second - yp_last.second) / (2.0 * DT);
+        
+        // 填充相对角度和角速度
+        pretraj_matrix.col(i) << yp_curr.first - yaw0_, pred_yaw_vel, yp_curr.second, pred_pitch_vel;
+
+        yp_last = yp_curr;
+        yp_curr = yp_next;
+    }
+
+    // 可以在这里更新 debug 信息，显示选中的 ID
+    // RCLCPP_INFO(logger_, "Selected Armor ID: %d", target_armor_id);
+
+    return pretraj_matrix;
+}
+
+autoaim_interfaces::msg::Target StandardObserver::predict_target(autoaim_interfaces::msg::Armors armors, double dt, double yaw, double bullet_speed)
+{
+  dt_ = dt; 
   autoaim_interfaces::msg::Target target;
   target.header.frame_id = params_.target_frame;
   target.header.stamp = armors.header.stamp;
+  gimbal_yaw_ = yaw;
+  bullet_speed_ = bullet_speed;
 
-  if (find_state_ == LOST)
-  {
-    target.tracking = false;
-    if (armors.armors.empty())
-    {
-      return target;
-    }
-    // Find armor of the highest priority
-    if (params_.is_sentry)
-    {
-      same_priority_armor_count_ = find_priority_armor(armors, params_.priority_sequence);
-    }
-    else
-    {
-      same_priority_armor_count_ = find_priority_armor(armors);
-    }
-    // if there is not armor in the priority sequence, just jump
-    if (same_priority_armor_count_ != -1)
-    {
-      tracking_armor_ = armors.armors[0];
-    }
-    else
-    {
-      find_state_ = LOST;
-      return target;
-    }
-    armor_type_ = tracking_armor_.type == 0 ? "SMALL" : "LARGE";
-    reset_kalman();
-    tracking_number_ = tracking_armor_.number;
-    find_state_ = DETECTING;
-    update_target_type(tracking_armor_);
-  }
-  else
-  {
-    // get observation
-    track_armor(armors);
-    if (find_state_ == TRACKING || find_state_ == TEMP_LOST)
-    {
-      // Pack data
-      target.position.x = target_state_(0);
-      target.position.y = target_state_(2);
-      target.position.z = target_state_(4);
-      target.yaw = target_state_(8);
-      target.velocity.x = target_state_(1);
-      target.velocity.y = target_state_(3);
-      target.velocity.z = 0;
-      target.v_yaw = target_state_(9);
-      target.radius_1 = target_state_(6);
-      target.radius_2 = target_state_(7);
-      target.dz = target_state_(5) - target_state_(4);
-      target.id = tracking_number_;
-      target.tracking = true;
-      target.armor_type = armor_type_;
-      target.armors_num = 4;
-    }
-    else
-    {
+  rclcpp::Time now = armors.header.stamp;
+
+  autoaim_interfaces::msg::PreTrajectory pretraj;
+  target.yaw0 = 0.0f;
+
+  if (armors.armors.empty()) {
+      update_state_machine(false); 
       target.tracking = false;
-    }
-    // Update threshold of temp lost
-    params_.max_lost = std::max(static_cast<int>(params_.lost_time_thresh / dt_), 5);
+      return target;
   }
+
+  std::vector<autoaim_interfaces::msg::Armor> candidates = armors.armors;
+  
+  std::sort(candidates.begin(), candidates.end(), 
+      [&](const autoaim_interfaces::msg::Armor& a, const autoaim_interfaces::msg::Armor& b) {
+          return math::get_distance(a.pose.position) < math::get_distance(b.pose.position);
+      });
+
+  auto best_armor = candidates.front();
+  bool should_switch = false;
+
+  if (find_state_ == LOST) {
+      should_switch = true;
+  } else {
+      // TRACKING or TEMP_LOST
+      if (best_armor.number == tracking_number_) {
+          should_switch = false;
+      } else {
+          bool time_expired = ((now - last_switch_time_).seconds()> SWITCH_LOCK_DT);
+
+          bool last_target_exists = false;
+          for (const auto& a : armors.armors) {
+              if (a.number == tracking_number_) {
+                  last_target_exists = true;
+                  break;
+              }
+          }
+
+          if (time_expired || !last_target_exists) {
+              should_switch = true;
+          } else {
+              should_switch = false;
+          }
+      }
+  }
+
+  if (should_switch) {
+      tracking_armor_ = best_armor;
+      tracking_number_ = best_armor.number;
+      armor_type_ = ARMOR_TYPE_STR[tracking_armor_.type];
+      
+      reset_kalman();
+      update_target_type(tracking_armor_);
+      
+      last_switch_time_ = now;
+      find_state_ = DETECTING;
+  } else {
+    // 保持旧目标
+  }
+
+
+  track_armor(armors);
+
+
+  if (find_state_ == TRACKING || find_state_ == TEMP_LOST) {
+    target.tracking = true;
+    target.id = tracking_number_; 
+    target.armors_num = 4;
+
+    target.position.x = target_state_(0);
+    target.position.y = target_state_(2);
+    target.position.z = target_state_(4); 
+    target.dz = target_state_(5);
+    target.radius_1 = target_state_(6);
+    target.radius_2 = target_state_(7);
+    target.armor_id = target_armor_id_;
+    
+    Eigen::Matrix<double, 4, HORIZON> pretraj_matrix = get_trajectory();
+    
+    for(int i = 0; i < HORIZON; i++) {
+      autoaim_interfaces::msg::PreTrajectory pt; 
+      pt.yaw = pretraj_matrix.col(i)(0);
+      pt.yaw_vel = pretraj_matrix.col(i)(1);
+      pt.pitch = pretraj_matrix.col(i)(2);
+      pt.pitch_vel = pretraj_matrix.col(i)(3);
+      target.pretraj.push_back(pt);
+    }
+    target.yaw0 = yaw0_;
+  } else {
+    target.tracking = false;
+  }
+  
+  // 更新最大丢失时间阈值
+  params_.max_lost = std::max(static_cast<int>(params_.lost_time_thresh / dt_), 5);
+
   return target;
 }
 
 void StandardObserver::track_armor(autoaim_interfaces::msg::Armors armors)
 {
+  
   bool matched = false;
   Eigen::VectorXd measurement;
+  yaw_vel_prev_ = target_state_(8);
   target_state_ = ekf_.Predict();
-  if (!armors.armors.empty())
-  {
-    autoaim_interfaces::msg::Armors same_id_armor;
-    autoaim_interfaces::msg::Armors standard_armor;
 
-    armor_type_ = tracking_armor_.type == 0 ? "SMALL" : "LARGE";
+  if (!armors.armors.empty()){
+      autoaim_interfaces::msg::Armors same_id_armor;
+      autoaim_interfaces::msg::Armors standard_armor;
 
-    // find armor of the highest priority
-    if (params_.is_sentry)
-    {
-      same_priority_armor_count_ = find_priority_armor(armors, params_.priority_sequence);
-    }
-    else
-    {
-      same_priority_armor_count_ = find_priority_armor(armors);
-    }
-    // if tracking armor is not armor of highest priority or
-    // not in the priority sequence,
-    // reset kalman and track armor of the highest priority
-    if (same_priority_armor_count_ == -1)
-    {
-      // RCLCPP_WARN(logger_, "no priority armor found");
-      find_state_ = TEMP_LOST;
-    }
-    else if (armors.armors[0].number != tracking_number_)
-    {
-      find_state_ = TEMP_LOST;
-    }
-    else
-    {
-      for (const auto& armor : armors.armors)
-      {
-        if (armor.number == tracking_number_)
-        {
-          same_id_armor.armors.emplace_back(armor);
+      armor_type_ = ARMOR_TYPE_STR[tracking_armor_.type];
+
+      for (const auto& armor : armors.armors) {
+          if (armor.number == tracking_number_) 
+            same_id_armor.armors.emplace_back(armor);
+      }
+
+      if (same_id_armor.armors.empty()) {
+        find_state_ = TEMP_LOST;
+      } else {
+        if (!same_id_armor.armors.empty()) {
+          for (int i = 0; i < 4; i++) {
+            // Get predictions
+            double pre_yaw = target_state_(8);
+            double angle = pre_yaw + M_PI_2 * i;
+            autoaim_interfaces::msg::Armor armor;
+            armor.pose.position.x = target_state_(0) - target_state_(6 + i % 2) * std::cos(angle);
+            armor.pose.position.y = target_state_(2) - target_state_(6 + i % 2) * std::sin(angle);
+            armor.pose.position.z = target_state_(4 + i % 2);
+            tf2::Quaternion tf_q;
+            tf_q.setRPY(0, angles::from_degrees(15.0), angle);
+            armor.pose.orientation = tf2::toMsg(tf_q);
+            standard_armor.armors.emplace_back(armor);
+          }
+          Eigen::MatrixXd score = getScoreMat(same_id_armor.armors, standard_armor.armors);
+          armor_match_ = getMatch(score, m_score_tolerance, 4);
+
+
+          double pred_car_yaw = target_state_(8); 
+          double yaw_vel = target_state_(9);
+
+
+          for (auto& match : armor_match_) {
+              int obs_idx = match.first; 
+              int geo_sec = match.second;
+              
+              double obs_armor_yaw = orientation2yaw(same_id_armor.armors[obs_idx].pose.orientation);
+              
+              // RCLCPP_INFO(logger_ ,"id:%d, geo_sec:%d, obs_armor_yaw:%.2f", obs_idx, geo_sec, obs_armor_yaw);
+
+              // 结合观测的yaw，判断基于EKF的相位是否合理
+              double theoretical_yaw_geo = pred_car_yaw + geo_sec * M_PI / 2.0;
+              double diff_yaw = std::abs(angles::shortest_angular_distance(theoretical_yaw_geo, obs_armor_yaw));
+
+              // 如果不合理，结合当前观测的yaw，重新判断相位
+              if (diff_yaw > 0.5) { 
+                  
+                  int best_sec = geo_sec;
+                  double min_diff = 1e9;
+
+                  for (int k = 0; k < 4; k++) {
+                      double theoretical_yaw_k = pred_car_yaw + k * M_PI / 2.0;
+                      double diff = std::abs(angles::shortest_angular_distance(theoretical_yaw_k, obs_armor_yaw));
+                      
+                      if (diff < min_diff) {
+                          min_diff = diff;
+                          best_sec = k;
+                      }
+                  }
+                  
+                  if (best_sec != geo_sec) {
+                      if (min_diff < diff_yaw - 0.1) {
+                           RCLCPP_WARN(logger_, "[Spinning] Jump! %d -> %d. Diff: %.2f -> %.2f", 
+                                      geo_sec, best_sec, diff_yaw, min_diff);
+                           match.second = best_sec; 
+                      }
+                  }
+              } 
+
+              RCLCPP_INFO(logger_, "id:%d, final_sec:%d, obs_yaw:%.2f", obs_idx, match.second, obs_armor_yaw);
+          }
+          RCLCPP_INFO(logger_, " ");
+
+          if (armor_match_.size() == 1) {
+            int num = armor_match_.begin()->first;
+            measurement.resize(4);
+            measurement << same_id_armor.armors[num].pose.position.x, 
+                           same_id_armor.armors[num].pose.position.y,
+                           same_id_armor.armors[num].pose.position.z, 
+                           orientation2yaw(same_id_armor.armors[num].pose.orientation);
+            matched = true;
+            target_state_ = ekf_.Correct(measurement);
+          } else if (armor_match_.size() == 2) {
+            int num1 = armor_match_.begin()->first;
+            int num2 = (++armor_match_.begin())->first;
+            measurement.resize(8);
+            measurement << same_id_armor.armors[num1].pose.position.x, 
+                           same_id_armor.armors[num1].pose.position.y,
+                           same_id_armor.armors[num1].pose.position.z, 
+                           orientation2yaw(same_id_armor.armors[num1].pose.orientation),
+                           same_id_armor.armors[num2].pose.position.x, 
+                           same_id_armor.armors[num2].pose.position.y, 
+                           same_id_armor.armors[num2].pose.position.z, 
+                           orientation2yaw(same_id_armor.armors[num2].pose.orientation);
+            matched = true;
+            target_state_ = ekf_.Correct(measurement);
+          } else {
+            RCLCPP_WARN(logger_, "no matched armor found! matched armor num: %ld", armor_match_.size());
+          }
         }
       }
-      if (!same_id_armor.armors.empty())
-      {
-        for (int i = 0; i < 4; i++)
-        {
-          // Get predictions
-          double pre_yaw = target_state_(8);
-          double angle = pre_yaw + M_PI_2 * i;
-          autoaim_interfaces::msg::Armor armor;
-          armor.pose.position.x = target_state_(0) - target_state_(6 + i % 2) * std::cos(angle);
-          armor.pose.position.y = target_state_(2) - target_state_(6 + i % 2) * std::sin(angle);
-          armor.pose.position.z = target_state_(4 + i % 2);
-          tf2::Quaternion tf_q;
-          tf_q.setRPY(0, angles::from_degrees(15.0), angle);
-          armor.pose.orientation = tf2::toMsg(tf_q);
-          standard_armor.armors.emplace_back(armor);
-        }
-        Eigen::MatrixXd score = getScoreMat(same_id_armor.armors, standard_armor.armors);
-        armor_match_ = getMatch(score, m_score_tolerance, 4);
-        if (armor_match_.size() == 1)
-        {
-          int num = armor_match_.begin()->first;
-          measurement.resize(4);
-          measurement << same_id_armor.armors[num].pose.position.x, same_id_armor.armors[num].pose.position.y,
-              same_id_armor.armors[num].pose.position.z, orientation2yaw(same_id_armor.armors[num].pose.orientation);
-          matched = true;
-          target_state_ = ekf_.Correct(measurement);
-        }
-        else if (armor_match_.size() == 2)
-        {
-          int num1 = armor_match_.begin()->first;
-          int num2 = (++armor_match_.begin())->first;
-          measurement.resize(8);
-          measurement << same_id_armor.armors[num1].pose.position.x, same_id_armor.armors[num1].pose.position.y,
-              same_id_armor.armors[num1].pose.position.z, orientation2yaw(same_id_armor.armors[num1].pose.orientation),
-              same_id_armor.armors[num2].pose.position.x, same_id_armor.armors[num2].pose.position.y,
-              same_id_armor.armors[num2].pose.position.z, orientation2yaw(same_id_armor.armors[num2].pose.orientation);
-          matched = true;
-          target_state_ = ekf_.Correct(measurement);
-        }
-        else
-        {
-          RCLCPP_WARN(logger_, "no matched armor found! matched armor num: %ld", armor_match_.size());
-        }
-      }
-    }
   }
+
   // Prevent radius from spreading
-  if (target_state_(6) < 0.2)
-  {
+  if (target_state_(6) < 0.2) {
     target_state_(6) = 0.2;
     ekf_.setState(target_state_);
-  }
-  else if (target_state_(6) > 0.4)
-  {
+  } else if (target_state_(6) > 0.4) {
     target_state_(6) = 0.4;
     ekf_.setState(target_state_);
-  }
-  if (target_state_(7) < 0.2)
-  {
+  } 
+  
+  if (target_state_(7) < 0.2) {
     target_state_(7) = 0.2;
     ekf_.setState(target_state_);
-  }
-  else if (target_state_(7) > 0.4)
-  {
+  } else if (target_state_(7) > 0.4) {
     target_state_(7) = 0.4;
     ekf_.setState(target_state_);
   }
-  // Update state machine
-  if (find_state_ == DETECTING)
-  {
-    if (matched)
-    {
+
+  update_state_machine(matched);
+}
+
+void StandardObserver::update_state_machine(bool matched)
+{
+  if (find_state_ == DETECTING) {
+    if (matched) {
       detect_cnt_++;
-      if (detect_cnt_ > params_.max_detect)
-      {
+      if (detect_cnt_ > params_.max_detect) {
         detect_cnt_ = 0;
         find_state_ = TRACKING;
       }
-    }
-    else
-    {
+    } else {
       detect_cnt_ = 0;
       find_state_ = LOST;
     }
-  }
-  else if (find_state_ == TRACKING)
-  {
-    if (!matched)
-    {
+  } else if (find_state_ == TRACKING) {
+    if (!matched) {
       find_state_ = TEMP_LOST;
       lost_cnt_++;
     }
-  }
-  else if (find_state_ == TEMP_LOST)
-  {
-    if (!matched)
-    {
+  } else if (find_state_ == TEMP_LOST) {
+    if (!matched) {
       lost_cnt_++;
-      // RCLCPP_WARN(logger_, "max lost %d, lost_cnt %d", params_.max_lost, lost_cnt_);
       
-      if (lost_cnt_ > params_.max_lost)
-      {
+      if (lost_cnt_ > params_.max_lost) {
         RCLCPP_WARN(logger_, "Target lost! %d %d", lost_cnt_, params_.max_lost);
         find_state_ = LOST;
         lost_cnt_ = 0;
       }
-    }
-    else
-    {
+    } else {
       find_state_ = TRACKING;
       lost_cnt_ = 0;
     }
@@ -416,31 +647,19 @@ void StandardObserver::track_armor(autoaim_interfaces::msg::Armors armors)
 
 void StandardObserver::reset_kalman()
 {
-  // RCLCPP_WARN(logger_, "Kalman Refreshed!");
-  // reset kalman
-  double armor_x = tracking_armor_.pose.position.x;
-  double armor_y = tracking_armor_.pose.position.y;
-  double armor_z = tracking_armor_.pose.position.z;
-  Eigen::VectorXd target(10);
-  double yaw = orientation2yaw(tracking_armor_.pose.orientation);
-  double r = 0.26;
-  double car_center_x = armor_x + r * std::cos(yaw);
-  double car_center_y = armor_y + r * std::sin(yaw);
-  double car_center_z = armor_z;
-  target << car_center_x, 0, car_center_y, 0, car_center_z, car_center_z, r, r, yaw, 0;
-  target_state_ = target;
-  ekf_.setState(target_state_);
-}
-
-Eigen::Vector3d StandardObserver::state2position(const Eigen::VectorXd& state)
-{
-  double car_center_x = state(0);
-  double car_center_y = state(2);
-  double car_center_z = state(4);
-  double r = state(7), yaw = state(8);
-  double armor_x = car_center_x - r * std::cos(yaw);
-  double armor_y = car_center_y - r * std::sin(yaw);
-  return Eigen::Vector3d(armor_x, armor_y, car_center_z);
+    const auto& armor = tracking_armor_;
+    double yaw = orientation2yaw(armor.pose.orientation);
+    double r = 0.26;
+    
+    Eigen::VectorXd state(10);
+    state << 
+        armor.pose.position.x + r * cos(yaw), 0,        // xc, vxc
+        armor.pose.position.y + r * sin(yaw), 0,        // yc, vyc  
+        armor.pose.position.z, armor.pose.position.z,   // z1, z2
+        r, r, yaw, 0;                                   // r1, r2, yaw, vyaw
+    
+    ekf_.setState(state);
+    target_state_ = state;
 }
 
 }  // namespace helios_cv

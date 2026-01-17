@@ -1,0 +1,59 @@
+gimbal_planner_node:
+  autoaim_mode:
+    type: int
+    default_value: 0
+    description: "autoaim mode, 0: armor, 1: small_energy, 2: big_energy"
+
+  max_yaw_acc:
+    type: double
+    default_value: 50.0
+
+  max_pitch_acc:
+    type: double
+    default_value: 100.0
+
+  Q_yaw:
+    type: double_array
+    default_value:
+      - 9000000.0
+      - 0.0
+
+  Q_pitch:
+    type: double_array
+    default_value:
+      - 9000000.0
+      - 0.0
+
+  R_yaw:
+    type: double_array
+    default_value:
+      - 1.0
+
+  R_pitch:
+    type: double_array
+    default_value:
+      - 1.0
+
+  fire_thresh:
+    type: double
+    default_value: 0.003
+
+  decision_speed:
+    type: double
+    default_value: 8.0
+
+  high_speed_delay_time:
+    type: double
+    default_value: 0.030
+
+  low_speed_delay_time:
+    type: double
+    default_value: 0.015
+
+  pitch_offset:
+    type: double
+    default_value: -1.4
+
+  yaw_offset:
+    type: double
+    default_value: -1.0

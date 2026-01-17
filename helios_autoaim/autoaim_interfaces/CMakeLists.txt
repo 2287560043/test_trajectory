@@ -32,6 +32,10 @@ rosidl_generate_interfaces(${PROJECT_NAME}
   # energy auto aim
   "msg/Omega.msg"
   "msg/DebugEnergyVel.msg"
+
+  # add
+  "msg/PlannedTarget.msg"
+  "msg/PreTrajectory.msg"
   DEPENDENCIES
     std_msgs
     sensor_msgs

@@ -167,7 +167,7 @@ void EnergyPredictorNode::track_energy(const autoaim_interfaces::msg::Armor& arm
   {
     matched_ = true;
     float omega_origin = orientation2roll(armor.pose.orientation);
-    last_roll_ = last_roll_ + angles::shortest_angular_distance(last_roll_, omega_origin);
+    last_roll_ = last_roll_ + math::get_angle_diff(last_roll_, omega_origin);
     omega_.set_theta(last_roll_);
 
     double omega_diff = omega_.current_theta_ - omega_.last_current_theta_;

@@ -5,46 +5,60 @@
 #define ARMOR_DETECTOR__ARMOR_HPP_
 
 #include <opencv2/core.hpp>
-
+#include <opencv2/imgproc.hpp> 
 // STL
 #include <algorithm>
 #include <string>
 
 namespace helios_cv
 {
-const int RED = 0;
-const int BLUE = 1;
+enum Color
+{
+  RED ,
+  BLUE ,
+  EXTINGUISH ,
+  PURPLE 
+};
+const std::vector<std::string> COLORS = {"red", "blue", "extinguish", "purple"};
 
-enum class ArmorType
+enum ArmorType
 {
   SMALL,
   LARGE,
+  // 由于还没有energy的专属类，所以energy临时寄放在这里
   ENERGY_FAN,
   ENERGY_TARGET,
+  
   INVALID
+
 };
+const std::vector<std::string> ARMOR_TYPE_STR = {"small", "large", "energy_fan", "energy_target", "invalid"};
 
-typedef enum
+enum ArmorPriority
 {
-  LOST,
-  TEMP_LOST,
-  TRACKING,
-  DETECTING
-} TrakerState;
-typedef enum
-{
-  OUTPOST,
-  NORMAL
-} TargetType;
-
-enum AUTOAIM_MODE
-{
-  AUTOAIM = 0,
-  SMALL_ENERGY = 1,
-  BIG_ENERGY = 2,
+  FIRST,
+  SENCOND,
+  THIRD,
+  FOURTH,
+  FIFTH
 };
+const std::vector<std::string> ARMOR_PRIORITY_STR = {"first", "sencond", "third", "fourth", "fifth"};
 
-const std::string ARMOR_TYPE_STR[3] = { "SMALL", "LARGE", "INVALID" };
+// 从分类器开始就已经存在一套命名体系，所以这里就不重复命名了
+// enum ArmorName
+// {
+//   ONE,
+//   TWO,
+//   THREE,
+//   FOUR,
+//   FIVE,
+//   SENTRY,
+//   OUTPOST,
+//   BASE
+// };
+// const std::vector<std::string> ARMOR_NAME_STR = {"one", "two", "three", "four", "five", "sentry", "outpost", "base"};
+
+
 
 struct Light : public cv::RotatedRect
 {
@@ -89,6 +103,7 @@ struct Armor
     // Angle of light center connection
     cv::Point2f diff = l1.center - l2.center;
     angle = std::atan(diff.y / diff.x) / CV_PI * 180;
+    
   }
 
   // Light pairs part
@@ -102,6 +117,15 @@ struct Armor
   std::string number;
   float confidence;
   std::string classfication_result;
+  double getArea() const
+  {
+    cv::Point2f pts[4];
+    pts[0] = left_light.top;
+    pts[1] = right_light.top;
+    pts[2] = right_light.bottom;
+    pts[3] = left_light.bottom;
+    return cv::contourArea(std::vector<cv::Point2f>(pts, pts + 4));
+  }
 };
 
 struct Armors

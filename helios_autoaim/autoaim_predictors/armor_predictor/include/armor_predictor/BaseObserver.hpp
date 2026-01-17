@@ -3,28 +3,45 @@
 // for more see document: https://swjtuhelios.feishu.cn/docx/MfCsdfRxkoYk3oxWaazcfUpTnih?from=from_copylink
 #pragma once
 
+// ros
+#include <rclcpp/rclcpp.hpp>
 #include <angles/angles.h>
+
+// Eigen
+#include <Eigen/Core>
+#include <Eigen/Dense>
+#include <Eigen/src/Core/Matrix.h>
+
+// standard header
+#include <string>
+#include <utility>
+#include <vector>
+#include <algorithm>
+#include <pstl/glue_algorithm_defs.h>
+
+// tf2
 #include <tf2/LinearMath/Matrix3x3.h>
 #include <tf2/LinearMath/Quaternion.h>
 #include <tf2/convert.h>
 
-#include <Eigen/Core>
-#include <Eigen/Dense>
+// interface
+#include <tf2_geometry_msgs/tf2_geometry_msgs.hpp>
+#include <geometry_msgs/msg/detail/quaternion__struct.hpp>
+#include "geometry_msgs/msg/point_stamped.hpp"
+#include "sensor_msgs/msg/camera_info.hpp"
 #include <autoaim_interfaces/msg/detail/armor__struct.hpp>
 #include <autoaim_interfaces/msg/detail/armors__struct.hpp>
-#include <geometry_msgs/msg/detail/quaternion__struct.hpp>
-#include <rclcpp/rclcpp.hpp>
-#include <string>
-#include <tf2_geometry_msgs/tf2_geometry_msgs.hpp>
-#include <utility>
-#include <vector>
 
+// custom header
 #include "autoaim_interfaces/msg/armors.hpp"
 #include "autoaim_interfaces/msg/target.hpp"
 #include "autoaim_utilities/Armor.hpp"
+#include "autoaim_utilities/Target.hpp"
+#include "autoaim_utilities/BulletTrajectory.hpp"
+#include "autoaim_utilities/Math.hpp"
 #include "autoaim_utilities/ExtendedKalmanFilter.hpp"
-#include "geometry_msgs/msg/point_stamped.hpp"
-#include "sensor_msgs/msg/camera_info.hpp"
+
+
 
 namespace helios_cv
 {
@@ -55,13 +72,13 @@ public:
 class BaseObserver
 {
 public:
-  virtual autoaim_interfaces::msg::Target predict_target(autoaim_interfaces::msg::Armors armors, double dt) = 0;
+  virtual autoaim_interfaces::msg::Target predict_target(autoaim_interfaces::msg::Armors armors, double dt, double yaw, double bullet_speed) = 0;
 
   virtual void reset_kalman() = 0;
 
   virtual void set_params(void* params) = 0;
 
-  TargetType target_type_ = NORMAL;
+  TargetType target_type_ = TargetType::NORMAL;
   int find_state_;
 
 protected:
@@ -100,7 +117,7 @@ protected:
   virtual Eigen::MatrixXd getScoreMat(const autoaim_interfaces::msg::Armors::_armors_type& detect_armors,
                                       const autoaim_interfaces::msg::Armors::_armors_type& standard_armors);
 
-  virtual Eigen::Vector3d state2position(const Eigen::VectorXd& state) = 0;
+  // virtual Eigen::Vector3d state2position(const Eigen::VectorXd& state) = 0;
 
   virtual double orientation2yaw(const geometry_msgs::msg::Quaternion& orientation);
 
@@ -136,7 +153,8 @@ protected:
 
   double m_score_tolerance = 1.0;
 
-  // 目标车辆状态
+  // target_state = [x, vx, y, vy, z, dh, r1, r2, yaw, vyaw]
+  //                 0  1   2  3   4  5   6   7   8    9
   Eigen::VectorXd target_state_;
 
 private:

@@ -3,8 +3,6 @@
 // for more see document: https://swjtuhelios.feishu.cn/docx/MfCsdfRxkoYk3oxWaazcfUpTnih?from=from_copylink
 #pragma once
 
-#include <rclcpp/rclcpp.hpp>
-
 #include "BaseObserver.hpp"
 #include "StandardObserver.hpp"
 
@@ -37,7 +35,7 @@ class OutpostObserver : public StandardObserver
 public:
   OutpostObserver(const OutpostObserverParams& params);
 
-  autoaim_interfaces::msg::Target predict_target(autoaim_interfaces::msg::Armors armors, double dt) final;
+  autoaim_interfaces::msg::Target predict_target(autoaim_interfaces::msg::Armors armors, double dt, double yaw, double bullet_speed) final;
 
   void reset_kalman() final;
 
@@ -46,7 +44,7 @@ public:
 private:
   void track_armor(autoaim_interfaces::msg::Armors armors) final;
 
-  Eigen::Vector3d state2position(const Eigen::VectorXd& state) final;
+  // Eigen::Vector3d state2position(const Eigen::VectorXd& state) final;
 
   double radius_ = 0.26;
 
