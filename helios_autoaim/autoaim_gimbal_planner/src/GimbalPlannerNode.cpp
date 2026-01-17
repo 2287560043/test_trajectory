@@ -67,7 +67,7 @@ void GimbalPlannerNode::gimbal_planner_callback(const autoaim_interfaces::msg::T
 
     Eigen::Matrix<double, 4, HORIZON> pretraj;
     if (target_msg->pretraj.size() != HORIZON) {
-        RCLCPP_ERROR(logger_, "pretraj size not equal to HORIZON: %ld", target_msg->pretraj.size());
+        // RCLCPP_ERROR(logger_, "pretraj size not equal to HORIZON: %ld", target_msg->pretraj.size());
         return;
     }
     for (int i = 0; i < HORIZON; i++) {

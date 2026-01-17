@@ -247,11 +247,14 @@ void ArmorPredictorNode::get_marker_array(autoaim_interfaces::msg::Target target
   position_marker_.header = target.header;
   text_marker_.header = target.header;
 
+  double zc = target.position.z - target.dz / 2;
+
   position_marker_.ns = "position";
   position_marker_.id = 0;
   if (target.tracking) {
     position_marker_.action = visualization_msgs::msg::Marker::ADD;
     position_marker_.pose.position = target.position;
+    position_marker_.pose.position.z = zc;
   } else {
     position_marker_.action = visualization_msgs::msg::Marker::DELETE;
   }
@@ -272,8 +275,8 @@ void ArmorPredictorNode::get_marker_array(autoaim_interfaces::msg::Target target
     double r2 = target.radius_2;
     double xc = target.position.x;
     double yc = target.position.y;
-    double zc = target.position.z;
     double dz = target.dz;
+    double z = target.position.z;
 
     bool is_current_pair = true;
     size_t a_n = target.armors_num;
@@ -286,7 +289,7 @@ void ArmorPredictorNode::get_marker_array(autoaim_interfaces::msg::Target target
       
       if (a_n == 4) {
         r = is_current_pair ? r1 : r2;
-        p_a.z = zc + (is_current_pair ? 0 : dz);
+        p_a.z = z - (is_current_pair ? 0 : dz);
         is_current_pair = !is_current_pair;
       } else {
         r = r1;
@@ -308,7 +311,7 @@ void ArmorPredictorNode::get_marker_array(autoaim_interfaces::msg::Target target
       text_marker_.action = visualization_msgs::msg::Marker::ADD;
       text_marker_.id = i;
       text_marker_.pose.position = p_a;
-      text_marker_.pose.position.z += 0.25; // 文字悬浮在板子上方 25cm
+      text_marker_.pose.position.z += 0.25;
 
       if (static_cast<int>(i) == target.armor_id) {
         target_armor_marker_.color.r = 0.0; 

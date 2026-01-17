@@ -21,31 +21,33 @@ StandardObserver::StandardObserver(const StandardObserverParams& params) : param
   double dt = BaseObserver::dt_;
   ekf_ = set_ekf(dt);
   last_switch_time_ = rclcpp::Time(0);
+  target_armor_id_ = -1;
 }
 
 ExtendedKalmanFilter StandardObserver::set_ekf(double dt)
 {
-  fixed_dt_ = dt;
-  auto f = [&, this](const Eigen::VectorXd& x) {
+  // fixed_dt_ = dt;
+  auto f = [dt, this](const Eigen::VectorXd& x) {
     Eigen::VectorXd x_new = x;
-    x_new(0) += x(1) * fixed_dt_;
-    x_new(2) += x(3) * fixed_dt_;
-    x_new(8) += x(9) * fixed_dt_;
+    x_new(0) += x(1) * dt;
+    x_new(2) += x(3) * dt;
+    // x_new(4) += x(5) * dt;
+    x_new(8) += x(9) * dt;
     return x_new;
   };
-  auto j_f = [&, this](const Eigen::VectorXd&) {
+  auto j_f = [dt, this](const Eigen::VectorXd&) {
     Eigen::MatrixXd f(10, 10);
     // clang-format off
         //     xc vxc          yc vyc          z1 z2 r1 r2 yaw vyaw
-        f <<   1, fixed_dt_,   0, 0,           0, 0, 0, 0, 0, 0,
+        f <<   1, dt,          0, 0,           0, 0, 0, 0, 0, 0,
                0, 1,           0, 0,           0, 0, 0, 0, 0, 0,
-               0, 0,           1, fixed_dt_,   0, 0, 0, 0, 0, 0,
+               0, 0,           1, dt,          0, 0, 0, 0, 0, 0,
                0, 0,           0, 1,           0, 0, 0, 0, 0, 0,
                0, 0,           0, 0,           1, 0, 0, 0, 0, 0,
                0, 0,           0, 0,           0, 1, 0, 0, 0, 0,
                0, 0,           0, 0,           0, 0, 1, 0, 0, 0,
                0, 0,           0, 0,           0, 0, 0, 1, 0, 0,
-               0, 0,           0, 0,           0, 0, 0, 0, 1, fixed_dt_,
+               0, 0,           0, 0,           0, 0, 0, 0, 1, dt,
                0, 0,           0, 0,           0, 0, 0, 0, 0, 1;
     // clang-format on
     return f;
@@ -117,7 +119,7 @@ ExtendedKalmanFilter StandardObserver::set_ekf(double dt)
     }
   };
   // update_Q - process noise covariance matrix
-  auto update_Q = [&](const Eigen::VectorXd& X) -> Eigen::MatrixXd {
+  auto update_Q = [this, dt](const Eigen::VectorXd& X) -> Eigen::MatrixXd {
     double t = dt, x = params_.ekf_params.sigma2_q_xyz, y = params_.ekf_params.sigma2_q_yaw,
            r = params_.ekf_params.sigma2_q_r;
     double q_z_z = params_.ekf_params.sigma2_q_z;
@@ -141,7 +143,7 @@ ExtendedKalmanFilter StandardObserver::set_ekf(double dt)
     return q;
   };
   // update_R - observation noise covariance matrix
-  auto update_R = [&](const Eigen::VectorXd& z) -> Eigen::MatrixXd {
+  auto update_R = [this](const Eigen::VectorXd& z) -> Eigen::MatrixXd {
     if (armor_match_.size() == 2)
     {
       Eigen::DiagonalMatrix<double, 8> r;
@@ -193,7 +195,7 @@ void StandardObserver::set_params(void* params)
   params_ = *static_cast<StandardObserverParams*>(params);
 }
 
-// [新增] 辅助函数：根据 ID 获取特定装甲板的 3D 位置
+// [add] 根据 ID 获取特定装甲板的 3D 位置
 Eigen::Vector3d StandardObserver::get_armor_position(const Eigen::VectorXd& state, int armor_index)
 {
     double xc = state(0), yc = state(2), z = state(4 + armor_index % 2);
@@ -210,19 +212,15 @@ Eigen::Vector3d StandardObserver::get_armor_position(const Eigen::VectorXd& stat
     );
 }
 
-// [核心重构] Jiaolong Style 的装甲板选择逻辑
-// 返回值：选中的最优装甲板索引 (0-3)
+// 返回选中的最优装甲板索引 (0-3)
 int StandardObserver::select_best_armor_id(const Eigen::VectorXd& state, double fly_time)
 {
-    // 1. 预测击中时刻的状态
-    //    简单的线性外推：位置+速度*时间, Yaw+角速度*时间
     Eigen::VectorXd pred_state = state;
-    pred_state(0) += state(1) * fly_time; // x += vx * t
-    pred_state(2) += state(3) * fly_time; // y += vy * t
-    pred_state(8) += state(9) * fly_time; // yaw += w * t
+    pred_state(0) += state(1) * fly_time; 
+    pred_state(2) += state(3) * fly_time; 
+    pred_state(8) += state(9) * fly_time;
     
-    // 2. 遍历所有装甲板，评估 "可击打性"
-    int best_idx = -1;
+    int best_id = -1;
     double min_swing_cost = 1e9;      // 枪口转动代价
     double min_wait_time = 1e9;       // 预瞄等待时间
     bool found_direct_aim = false;    // 是否找到正对的板
@@ -235,8 +233,9 @@ int StandardObserver::select_best_armor_id(const Eigen::VectorXd& state, double 
     // Camera->Center = (xc, yc)
     double center_angle = std::atan2(pred_state(2), pred_state(0)); 
 
+    RCLCPP_INFO(logger_, "");
     for (int i = 0; i < 4; i++) {
-        // 当前装甲板的朝向角 (World Frame)
+        // 当前装甲板的朝向角 (odoom frame)
         double armor_yaw = car_yaw + i * (M_PI / 2.0);
         armor_yaw = angles::normalize_angle(armor_yaw);
 
@@ -247,7 +246,9 @@ int StandardObserver::select_best_armor_id(const Eigen::VectorXd& state, double 
         // 实际上 armor normal 是 (cos(yaw), sin(yaw)), cam vector 是 (-x, -y)
         
         // 真正的板朝向角误差
-        double orientation_diff = std::abs(angles::shortest_angular_distance(armor_yaw, center_angle + M_PI));
+        double orientation_diff = std::abs(angles::shortest_angular_distance(armor_yaw, center_angle));
+        RCLCPP_INFO(logger_, "armor %d: armor_yaw:%f", i, armor_yaw);
+        RCLCPP_INFO(logger_, "orientation_diff:%f", orientation_diff);
         
         // 计算当前云台 Yaw 到该装甲板的 Swing Cost
         // 注意：这里需要粗略计算装甲板的方位角
@@ -259,7 +260,7 @@ int StandardObserver::select_best_armor_id(const Eigen::VectorXd& state, double 
             // ---> Direct Aim (直接击打模式)
             // 找到一个正对的板，优先选择 Swing Cost 最小的
             if (!found_direct_aim || swing_cost < min_swing_cost) {
-                best_idx = i;
+                best_id = i;
                 min_swing_cost = swing_cost;
                 found_direct_aim = true;
             }
@@ -279,18 +280,17 @@ int StandardObserver::select_best_armor_id(const Eigen::VectorXd& state, double 
                 double time_to_face = std::abs(angle_to_face / car_w);
                 if (time_to_face < min_wait_time) {
                     min_wait_time = time_to_face;
-                    best_idx = i;
+                    best_id = i;
                 }
             }
         }
     }
 
-    // 兜底策略：如果都没选中（比如静止且侧身，或者算崩了），选距离最近的
-    if (best_idx == -1) {
+    if (best_id == -1) {
          return 0; // 或者保留上一次的 ID
     }
 
-    return best_idx;
+    return best_id;
 }
 
 // [重构] 轨迹生成函数
@@ -454,17 +454,24 @@ autoaim_interfaces::msg::Target StandardObserver::predict_target(autoaim_interfa
     target.radius_1 = target_state_(6);
     target.radius_2 = target_state_(7);
     target.armor_id = target_armor_id_;
+
+    target.yaw = target_state_(8);
+
+
+    double dist = std::sqrt(target_state_(0)*target_state_(0) + target_state_(2)*target_state_(2));
+    double fly_time = dist / bullet_speed_;
+    target_armor_id_ = select_best_armor_id(target_state_, fly_time);
     
-    Eigen::Matrix<double, 4, HORIZON> pretraj_matrix = get_trajectory();
+    // Eigen::Matrix<double, 4, HORIZON> pretraj_matrix = get_trajectory();
     
-    for(int i = 0; i < HORIZON; i++) {
-      autoaim_interfaces::msg::PreTrajectory pt; 
-      pt.yaw = pretraj_matrix.col(i)(0);
-      pt.yaw_vel = pretraj_matrix.col(i)(1);
-      pt.pitch = pretraj_matrix.col(i)(2);
-      pt.pitch_vel = pretraj_matrix.col(i)(3);
-      target.pretraj.push_back(pt);
-    }
+    // for(int i = 0; i < HORIZON; i++) {
+    //   autoaim_interfaces::msg::PreTrajectory pt; 
+    //   pt.yaw = pretraj_matrix.col(i)(0);
+    //   pt.yaw_vel = pretraj_matrix.col(i)(1);
+    //   pt.pitch = pretraj_matrix.col(i)(2);
+    //   pt.pitch_vel = pretraj_matrix.col(i)(3);
+    //   target.pretraj.push_back(pt);
+    // }
     target.yaw0 = yaw0_;
   } else {
     target.tracking = false;
@@ -557,9 +564,9 @@ void StandardObserver::track_armor(autoaim_interfaces::msg::Armors armors)
                   }
               } 
 
-              RCLCPP_INFO(logger_, "id:%d, final_sec:%d, obs_yaw:%.2f", obs_idx, match.second, obs_armor_yaw);
+              // RCLCPP_INFO(logger_, "id:%d, final_sec:%d, obs_yaw:%.2f", obs_idx, match.second, obs_armor_yaw);
           }
-          RCLCPP_INFO(logger_, " ");
+          // RCLCPP_INFO(logger_, " ");
 
           if (armor_match_.size() == 1) {
             int num = armor_match_.begin()->first;

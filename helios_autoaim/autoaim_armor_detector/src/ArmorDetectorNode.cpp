@@ -233,15 +233,23 @@ void ArmorDetectorNode::armorImageCallback(sensor_msgs::msg::Image::UniquePtr im
     if (!armor_detect_stream_) {
         return;
     }
+    
     auto image_header = image_msg->header;
-    auto image =
-        cv_bridge::toCvShare(std::move(image_msg), sensor_msgs::image_encodings::RGB8)->image;
+    auto image = cv_bridge::toCvShare(std::move(image_msg), sensor_msgs::image_encodings::RGB8)->image;
+    
+    std::string current_frame_id = frame_namespace_ + "camera_optical_frame";
+    if (image_header.frame_id.empty()) {
+        image_header.frame_id = current_frame_id;
+        RCLCPP_WARN_ONCE(get_logger(), "Frame ID was empty, force set to: %s", current_frame_id.c_str());
+    }
+    armor_marker_.header = image_header;
+    text_marker_.header = image_header;
+
     geometry_msgs::msg::TransformStamped ts_odom2cam, ts_cam2odom;
-    double yaw;
+    double yaw = 0.0;
 
     if (pnp_solver_ != nullptr) {
-        armors_msg_.header = armor_marker_.header = text_marker_.header = image_header;
-
+        armors_msg_.header = image_header;
         armors_msg_.armors.clear();
         marker_array_.markers.clear();
         armor_marker_.id = 0;
@@ -250,15 +258,16 @@ void ArmorDetectorNode::armorImageCallback(sensor_msgs::msg::Image::UniquePtr im
 
     try {
         ts_odom2cam = tf2_buffer_->lookupTransform(
-            frame_namespace_ + "camera_optical_frame",
+            current_frame_id, 
             frame_namespace_ + "odoom",
             image_header.stamp
         );
         ts_cam2odom = tf2_buffer_->lookupTransform(
             frame_namespace_ + "odoom",
-            frame_namespace_ + "camera_optical_frame",
+            current_frame_id, 
             image_header.stamp
         );
+        
         auto odom2yawlink = tf2_buffer_->lookupTransform(
             frame_namespace_ + "yaw_link",
             frame_namespace_ + "odoom",
@@ -271,11 +280,11 @@ void ArmorDetectorNode::armorImageCallback(sensor_msgs::msg::Image::UniquePtr im
             odom2yawlink.transform.rotation.w
         );
         tf2::Matrix3x3 m(q);
-        // blank roll and pitch, not using them
         double roll, pitch;
         m.getRPY(roll, pitch, yaw);
+        
     } catch (const tf2::TransformException& ex) {
-        RCLCPP_ERROR(get_logger(), "Error while transforming %s", ex.what());
+        RCLCPP_ERROR_THROTTLE(get_logger(), *get_clock(), 1000, "TF Error: %s", ex.what());
         return;
     }
 
@@ -286,34 +295,43 @@ void ArmorDetectorNode::armorImageCallback(sensor_msgs::msg::Image::UniquePtr im
     armors_msg_.header = image_header;
 
     armors_pub_->publish(armors_msg_);
-    rclcpp::Time now = this->get_clock()->now();
-    RCLCPP_INFO(
-        logger_,
-        "time cost: %.2f ms",
-        (now - rclcpp::Time(image_header.stamp)).seconds() * 1000.0
-    );
 
     if (params_.debug) {
         publish_debug_infos();
         publishMarkers();
     }
 }
-
 void ArmorDetectorNode::publishMarkers() {
-    using Marker = visualization_msgs::msg::Marker;
-    for (const auto& armor: armors_msg_.armors) {
-        armor_marker_.id++;
-        armor_marker_.scale.y = armor.type == 0 ? 0.135 : 0.23;
-        armor_marker_.pose = armor.pose;
-        text_marker_.id++;
-        text_marker_.pose.position = armor.pose.position;
-        text_marker_.pose.position.y -= 0.1;
-        text_marker_.text = armor.number;
-        marker_array_.markers.emplace_back(armor_marker_);
-        marker_array_.markers.emplace_back(text_marker_);
+    marker_array_.markers.clear();
+
+    if (armors_msg_.armors.empty()) {
+        visualization_msgs::msg::Marker clear_marker = armor_marker_;
+        clear_marker.action = visualization_msgs::msg::Marker::DELETEALL;
+        if (clear_marker.header.frame_id.empty()) {
+             clear_marker.header.frame_id = frame_namespace_ + "camera_optical_frame";
+             clear_marker.header.stamp = this->now();
+        }
+        marker_array_.markers.push_back(clear_marker);
+    } 
+    else {
+        armor_marker_.action = visualization_msgs::msg::Marker::ADD;
+        text_marker_.action = visualization_msgs::msg::Marker::ADD;
+        
+        for (const auto& armor: armors_msg_.armors) {
+            armor_marker_.id++;
+            armor_marker_.scale.y = armor.type == 0 ? 0.135 : 0.23;
+            armor_marker_.pose = armor.pose;
+            
+            text_marker_.id++;
+            text_marker_.pose.position = armor.pose.position;
+            text_marker_.pose.position.y -= 0.1;
+            text_marker_.text = armor.number;
+            
+            marker_array_.markers.emplace_back(armor_marker_);
+            marker_array_.markers.emplace_back(text_marker_);
+        }
     }
-    armor_marker_.action = armors_msg_.armors.empty() ? Marker::DELETE : Marker::ADD;
-    marker_array_.markers.emplace_back(armor_marker_);
+    
     marker_pub_->publish(marker_array_);
 }
 

@@ -88,7 +88,7 @@ void Syncer::trySync() {
             }
         }
         auto average_time = time_sum / calculate_count;
-        log(LogLevel::Info, "average: {}", average_time);
+        // log(LogLevel::Info, "average: {}", average_time);
         if (calculate_count != 0 && average_time > params_.camera_imu_time_difference_us.min
             && average_time < params_.camera_imu_time_difference_us.max)
         {
@@ -173,13 +173,13 @@ void Syncer::processAndPublishSyncedFrameLoop() {
                 camera_frames_[camera_frame_index],
                 imu_frames_[imu_frame_index]
             );
-log(LogLevel::Info, "IMU Time:       {}",ms_to_utc_time(imu_frames_[imu_frame_index]->system_time));
-log(LogLevel::Info, "Camera Time:    {}", ms_to_utc_time(camera_frames_[camera_frame_index]->frame_timestamp_ms));
-log(LogLevel::Info, "cameraId:       {}", camera_frames_[camera_frame_index]->id);
-log(LogLevel::Info, "imuId:          {}", imu_frames_[imu_frame_index]->id);
-log(LogLevel::Info, "offset:         {}", offset_);  
-log(LogLevel::Info, "time diffrence: {}", std::chrono::duration_cast<std::chrono::microseconds>(camera_frames_[camera_frame_index]->time - imu_frames_[imu_frame_index]->time).count()/1000.0);
-log(LogLevel::Info, "-----------------------------------");
+// log(LogLevel::Info, "IMU Time:       {}",ms_to_utc_time(imu_frames_[imu_frame_index]->system_time));
+// log(LogLevel::Info, "Camera Time:    {}", ms_to_utc_time(camera_frames_[camera_frame_index]->frame_timestamp_ms));
+// log(LogLevel::Info, "cameraId:       {}", camera_frames_[camera_frame_index]->id);
+// log(LogLevel::Info, "imuId:          {}", imu_frames_[imu_frame_index]->id);
+// log(LogLevel::Info, "offset:         {}", offset_);  
+// log(LogLevel::Info, "time diffrence: {}", std::chrono::duration_cast<std::chrono::microseconds>(camera_frames_[camera_frame_index]->time - imu_frames_[imu_frame_index]->time).count()/1000.0);
+// log(LogLevel::Info, "-----------------------------------");
         }
     }
 }
