@@ -11,8 +11,6 @@
 
 namespace helios_cv
 {
-const double STATIC_YAW_VEL_THRESH = 0.008;  // rad/s
-const double TOP_YAW_VEL_THRESH = 1e9; // 夏天的
 
 StandardObserver::StandardObserver(const StandardObserverParams& params) : params_(params)
 {
@@ -26,30 +24,28 @@ StandardObserver::StandardObserver(const StandardObserverParams& params) : param
 
 ExtendedKalmanFilter StandardObserver::set_ekf(double dt)
 {
-  // fixed_dt_ = dt;
-  auto f = [dt, this](const Eigen::VectorXd& x) {
+  auto f = [=](const Eigen::VectorXd& x) {
     Eigen::VectorXd x_new = x;
     x_new(0) += x(1) * dt;
     x_new(2) += x(3) * dt;
-    x_new(4) += x(5) * dt;
+    // x_new(4) += x(5) * dt;
     x_new(8) += x(9) * dt;
     return x_new;
   };
-  auto j_f = [dt, this](const Eigen::VectorXd&) {
-    Eigen::MatrixXd f(11, 11);
+  auto j_f = [=](const Eigen::VectorXd&) {
+    Eigen::MatrixXd f(10, 10);
     // clang-format off
-        //     xc vxc          yc vyc          z1 vz  r1 r2 yaw vyaw dz
-        f <<   1, dt,          0, 0,           0, 0,  0, 0, 0,  0,   0,
-               0, 1,           0, 0,           0, 0,  0, 0, 0,  0,   0,
-               0, 0,           1, dt,          0, 0,  0, 0, 0,  0,   0,
-               0, 0,           0, 1,           0, 0,  0, 0, 0,  0,   0,
-               0, 0,           0, 0,           1, dt, 0, 0, 0,  0,   0,
-               0, 0,           0, 0,           0, 1,  0, 0, 0,  0,   0,
-               0, 0,           0, 0,           0, 0,  1, 0, 0,  0,   0,
-               0, 0,           0, 0,           0, 0,  0, 1, 0,  0,   0,
-               0, 0,           0, 0,           0, 0,  0, 0, 1,  dt,  0,
-               0, 0,           0, 0,           0, 0,  0, 0, 0,  1,   0,
-               0, 0,           0, 0,           0, 0,  0, 0, 0,  0,   1;
+        //     xc vxc          yc vyc          z1 vz  r1 r2 yaw vyaw 
+        f <<   1, dt,          0, 0,           0, 0,  0, 0, 0,  0,   
+               0, 1,           0, 0,           0, 0,  0, 0, 0,  0,   
+               0, 0,           1, dt,          0, 0,  0, 0, 0,  0,   
+               0, 0,           0, 1,           0, 0,  0, 0, 0,  0,   
+               0, 0,           0, 0,           1, dt, 0, 0, 0,  0,   
+               0, 0,           0, 0,           0, 1,  0, 0, 0,  0,   
+               0, 0,           0, 0,           0, 0,  1, 0, 0,  0,   
+               0, 0,           0, 0,           0, 0,  0, 1, 0,  0,   
+               0, 0,           0, 0,           0, 0,  0, 0, 1,  dt,  
+               0, 0,           0, 0,           0, 0,  0, 0, 0,  1;   
     // clang-format on
     return f;
   };
@@ -63,11 +59,11 @@ ExtendedKalmanFilter StandardObserver::set_ekf(double dt)
       double yaw2 = x(8) + sec2 * M_PI_2, r2 = x(6 + sec2 % 2);
       z(0) = xc - r1 * cos(yaw1);             // xa1
       z(1) = yc - r1 * sin(yaw1);             // ya1
-      z(2) = x(4) + (sec1 % 2) ? 0 : x(10);   // za1
+      z(2) = x(4) ;   // za1
       z(3) = yaw1;                            // yaw1
       z(4) = xc - r2 * cos(yaw2);             // xa2
       z(5) = yc - r2 * sin(yaw2);             // ya2
-      z(6) = x(4) + (sec2 % 2) ? 0 : x(10);   // za2
+      z(6) = x(4) ;   // za2
       z(7) = yaw2;                            // yaw2
       return z;
     }
@@ -78,7 +74,7 @@ ExtendedKalmanFilter StandardObserver::set_ekf(double dt)
       double xc = x(0), yc = x(2), yaw = x(8) + sec * M_PI_2, r = x(6 + sec % 2);
       z(0) = xc - r * cos(yaw);             // xa
       z(1) = yc - r * sin(yaw);             // ya
-      z(2) = x(4) + (sec % 2) ? 0 : x(10);  // za
+      z(2) = x(4);  // za
       z(3) = yaw;                           // yaw
       return z;
     }
@@ -93,15 +89,15 @@ ExtendedKalmanFilter StandardObserver::set_ekf(double dt)
       double yaw2 = x(8) + sec2 * M_PI_2, r2 = x(6 + sec2 % 2);
       // clang-format off
             //  0.   1.   2.    3.   4.            
-            //  xc   vxc  yc    vyc  z1              vz        r1                            r2                        yaw                   vyaw   dz
-            h <<1,   0,   0,    0,   0,              0,        -((sec1 + 1) % 2) * cos(yaw1), -(sec1 % 2) * cos(yaw1), r1 * sin(yaw1),       0,     0,
-                0,   0,   1,    0,   0,              0,        -((sec1 + 1) % 2) * sin(yaw1), -(sec1 % 2) * sin(yaw1), -r1 * cos(yaw1),      0,     0,
-                0,   0,   0,    0,   (sec1 + 1) % 2, sec1 % 2, 0,                             0,                       0,                    0,     0,   
-                0,   0,   0,    0,   0,              0,        0,                             0,                       1,                    0,     0,
-                1,   0,   0,    0,   0,              0,        -((sec2 + 1) % 2) * cos(yaw2), -(sec2 % 2) * cos(yaw2), r2 * sin(yaw2),       0,     0,
-                0,   0,   1,    0,   0,              0,        -((sec2 + 1) % 2) * sin(yaw2), -(sec2 % 2) * sin(yaw2), -r2 * cos(yaw2),      0,     0,
-                0,   0,   0,    0,   (sec2 + 1) % 2, sec2 % 2, 0,                             0,                       0,                    0,     0, 
-                0,   0,   0,    0,   0,              0,        0,                             0,                       1,                    0,     0;
+            //  xc   vxc  yc    vyc  z1              vz        r1                            r2                        yaw                   vyaw   
+            h <<1,   0,   0,    0,   0,              0,        -((sec1 + 1) % 2) * cos(yaw1), -(sec1 % 2) * cos(yaw1), r1 * sin(yaw1),       0,     
+                0,   0,   1,    0,   0,              0,        -((sec1 + 1) % 2) * sin(yaw1), -(sec1 % 2) * sin(yaw1), -r1 * cos(yaw1),      0,     
+                0,   0,   0,    0,   (sec1 + 1) % 2, sec1 % 2, 0,                             0,                       0,                    0,        
+                0,   0,   0,    0,   0,              0,        0,                             0,                       1,                    0,     
+                1,   0,   0,    0,   0,              0,        -((sec2 + 1) % 2) * cos(yaw2), -(sec2 % 2) * cos(yaw2), r2 * sin(yaw2),       0,     
+                0,   0,   1,    0,   0,              0,        -((sec2 + 1) % 2) * sin(yaw2), -(sec2 % 2) * sin(yaw2), -r2 * cos(yaw2),      0,     
+                0,   0,   0,    0,   (sec2 + 1) % 2, sec2 % 2, 0,                             0,                       0,                    0,      
+                0,   0,   0,    0,   0,              0,        0,                             0,                       1,                    0;
       // clang-format on
       return h;
     }
@@ -121,7 +117,7 @@ ExtendedKalmanFilter StandardObserver::set_ekf(double dt)
     }
   };
   // update_Q - process noise covariance matrix
-  auto update_Q = [this, dt](const Eigen::VectorXd& X) -> Eigen::MatrixXd {
+  auto update_Q = [=](const Eigen::VectorXd& X) -> Eigen::MatrixXd {
     double t = dt, x = params_.ekf_params.sigma2_q_xyz, y = params_.ekf_params.sigma2_q_yaw,
            r = params_.ekf_params.sigma2_q_r;
     double q_z_z = params_.ekf_params.sigma2_q_z;
@@ -766,7 +762,7 @@ void StandardObserver::reset_kalman()
     state << 
         armor.pose.position.x + r * cos(yaw), 0,        // xc, vxc
         armor.pose.position.y + r * sin(yaw), 0,        // yc, vyc  
-        armor.pose.position.z, armor.pose.position.z,   // z1, z2
+        armor.pose.position.z, 0,   // z1, vz
         r, r, yaw, 0;                                   // r1, r2, yaw, vyaw
     
     ekf_.setState(state);

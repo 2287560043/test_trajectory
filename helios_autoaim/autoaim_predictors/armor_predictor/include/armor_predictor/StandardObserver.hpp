@@ -86,7 +86,6 @@ protected:
   double bullet_speed_;
   double gimbal_yaw_;
   double yaw0_;
-  double fixed_dt_;
 
   rclcpp::Time last_switch_time_;             
 
