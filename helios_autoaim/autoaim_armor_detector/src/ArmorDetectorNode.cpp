@@ -257,6 +257,7 @@ void ArmorDetectorNode::armorImageCallback(sensor_msgs::msg::Image::UniquePtr im
     }
 
     try {
+
         ts_odom2cam = tf2_buffer_->lookupTransform(
             current_frame_id, 
             frame_namespace_ + "odoom",
@@ -338,7 +339,7 @@ void ArmorDetectorNode::publishMarkers() {
 void ArmorDetectorNode::publish_debug_infos() {
     result_img_pub_.publish(
         cv_bridge::CvImage(
-            std_msgs::msg::Header(),
+            armors_msg_.header,
             sensor_msgs::image_encodings::RGB8,
             armor_detect_stream_->get_debug_images()
         )

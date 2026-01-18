@@ -104,7 +104,9 @@ AutoAimDebugger::AutoAimDebugger(const rclcpp::NodeOptions& options) : rclcpp::N
                                              std::chrono::duration<int>(2));
   if (!params_.no_hardware)
   {
+    RCLCPP_ERROR(logger_, "11");
     sync_ = std::make_shared<message_filters::Synchronizer<NormalPolicy>>(NormalPolicy(10), image_sub_, target_sub_);
+    RCLCPP_ERROR(logger_, "222");
     sync_->registerCallback(&AutoAimDebugger::image_callback, this);
   }
   else
@@ -215,6 +217,7 @@ void AutoAimDebugger::image_callback(sensor_msgs::msg::Image::SharedPtr msg,
   // Get transform infomation
   try
   {
+    rclcpp::Duration timeout(0, 100000000);
     cam2odom_ = tf2_buffer_->lookupTransform("camera_optical_frame", "odoom", msg->header.stamp,
                                              rclcpp::Duration::from_seconds(0.1));
     odom2cam_ = tf2_buffer_->lookupTransform("odoom", "camera_optical_frame", msg->header.stamp,
@@ -227,7 +230,7 @@ void AutoAimDebugger::image_callback(sensor_msgs::msg::Image::SharedPtr msg,
     RCLCPP_ERROR(this->get_logger(), "tf2 exception: %s", e.what());
     return;
   }
-  caculate_bullets(target_msg);
+  // caculate_bullets(target_msg);
   caculate_target(target_msg);
   draw_predicted_points();
   // Draw image center
@@ -424,10 +427,8 @@ void AutoAimDebugger::caculate_target(autoaim_interfaces::msg::Target::SharedPtr
 
       for (size_t i = 0; i < armors_num; i++)
       {
-        // 计算每个装甲板的 Yaw 角
         double tmp_yaw = yaw + i * (2 * M_PI / armors_num);
         
-        // 处理 4 板结构的大小板半径和高度差 (如平衡步兵/前哨站可能不同，标准车辆一般 r1=r2)
         if (armors_num == 4)
         {
           r = is_current_pair ? r1 : r2;
@@ -457,7 +458,7 @@ void AutoAimDebugger::caculate_target(autoaim_interfaces::msg::Target::SharedPtr
         target_pose_ros_.emplace_back(pose);
       }
     }
-    else if (target_msg->armors_num == 1) // 只有1个板的情况（罕见，通常用于调试）
+    else if (target_msg->armors_num == 1)
     {
        geometry_msgs::msg::Pose pose;
        tf2::Quaternion tf_q;
@@ -466,9 +467,8 @@ void AutoAimDebugger::caculate_target(autoaim_interfaces::msg::Target::SharedPtr
        pose.position = target_msg->position;
        target_pose_ros_.emplace_back(pose);
     }
-    // 能量机关 (5板) 逻辑保持不变，此处省略，如果需要请保留原文件中的 else if (target_msg->armors_num == 5) ...
+    // energy empty
 
-    // 2. 坐标变换：Odom -> Camera Optical Frame
     try
     {
       for (auto& pose : target_pose_ros_)
@@ -482,11 +482,9 @@ void AutoAimDebugger::caculate_target(autoaim_interfaces::msg::Target::SharedPtr
       return;
     }
 
-    // 3. 投影到图像并绘制
-    // 为了确定哪个是“击打目标”，我们计算哪个装甲板中心距离图像中心最近
     int best_target_idx = -1;
     double min_dist_sq = DBL_MAX;
-    std::vector<cv::Point2f> centers_2d; // 存储所有板的2D中心
+    std::vector<cv::Point2f> centers_2d;
 
     for (size_t i = 0; i < target_pose_ros_.size(); i++)
     {
@@ -499,17 +497,14 @@ void AutoAimDebugger::caculate_target(autoaim_interfaces::msg::Target::SharedPtr
       target_tvecs_.emplace_back(tvec);
       target_rvecs_.emplace_back(q);
 
-      // 简单的中心点投影用于距离判断
       std::vector<cv::Point3f> center_3d = {cv::Point3f(0,0,0)};
       std::vector<cv::Point2f> center_2d_vec;
       cv::projectPoints(center_3d, q.toRotMat3x3(), tvec, camera_matrix_, distortion_coefficients_, center_2d_vec);
       
       if (!center_2d_vec.empty()) {
         centers_2d.push_back(center_2d_vec[0]);
-        // 计算距离图像中心的欧氏距离平方
         double dist_sq = std::pow(center_2d_vec[0].x - image_center_.x, 2) + 
                          std::pow(center_2d_vec[0].y - image_center_.y, 2);
-        // 同时要保证装甲板在相机前方 (z > 0)
         if (target_pose_ros_[i].position.z > 0 && dist_sq < min_dist_sq) {
           min_dist_sq = dist_sq;
           best_target_idx = i;
@@ -519,34 +514,26 @@ void AutoAimDebugger::caculate_target(autoaim_interfaces::msg::Target::SharedPtr
       }
     }
 
-    // 4. 正式绘制
     for (std::size_t i = 0; i < target_tvecs_.size(); i++)
     {
-      // 过滤掉相机后方的点
       if (target_tvecs_[i].at<double>(2) <= 0) continue;
 
       std::vector<cv::Point2f> image_points;
-      // 根据装甲板类型选择 3D 点模型 (小板/大板)
-      // 注意：target_msg 中有 armor_type，但这里为了简化，使用初始化好的 armor_object_points_
-      // 严谨做法是根据 target_msg->armor_type 切换 points
+
       cv::projectPoints(armor_object_points_, target_rvecs_[i].toRotMat3x3(), target_tvecs_[i], 
                         camera_matrix_, distortion_coefficients_, image_points);
 
-      // 设置颜色：击打目标为红色/洋红，其他为蓝色/青色
       cv::Scalar line_color = (int)i == best_target_idx ? cv::Scalar(0, 0, 255) : cv::Scalar(255, 255, 0); // BGR
       int thickness = (int)i == best_target_idx ? 3 : 1;
 
-      // 绘制四边形
       for (size_t j = 0; j < image_points.size(); j++)
       {
         cv::line(raw_image_, image_points[j], image_points[(j + 1) % image_points.size()], 
                  line_color, thickness);
       }
       
-      // 绘制中心点和标签
       if (i < centers_2d.size()) {
           cv::circle(raw_image_, centers_2d[i], 4, line_color, -1);
-          // 标记 "Hit"
           if ((int)i == best_target_idx) {
              cv::putText(raw_image_, "HIT", centers_2d[i] + cv::Point2f(10, -10), 
                          cv::FONT_HERSHEY_SIMPLEX, 0.8, cv::Scalar(0, 0, 255), 2);
