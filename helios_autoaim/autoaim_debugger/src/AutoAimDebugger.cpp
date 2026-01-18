@@ -68,6 +68,7 @@ AutoAimDebugger::AutoAimDebugger(const rclcpp::NodeOptions& options) : rclcpp::N
   bullet_model_ = std::make_shared<BulletModel>(params_.max_bullet_num, params_.air_resistance, 28);
   /// create publishers
   image_pub_ = image_transport::create_publisher(this, node_namespace_ + "/autoaim_debugger/result_img");
+  // detection_image_pub_ = image_transport::create_publisher(this, node_namespace_ + "/autoaim_debugger/detection_img");
   init_object_points();
   /// create subscribers
   camera_info_sub_ = this->create_subscription<sensor_msgs::msg::CameraInfo>(
@@ -78,7 +79,7 @@ AutoAimDebugger::AutoAimDebugger(const rclcpp::NodeOptions& options) : rclcpp::N
         camera_info_sub_.reset();
       });
   target_sub_.subscribe(this, node_namespace_ + "/predictor/target");
-  // receive_data_sub_.subscribe(this, node_namespace_ + "/autoaim_bridge/receive_data");
+  armors_sub_.subscribe(this, node_namespace_ + "/detector/armors", rclcpp::SensorDataQoS().get_rmw_qos_profile());
   receive_data_sub_ = this->create_subscription<autoaim_interfaces::msg::ReceiveData>(
       "/autoaim_bridge/receive_data", rclcpp::SystemDefaultsQoS(),
       [this](autoaim_interfaces::msg::ReceiveData::SharedPtr receive_msg) { receive_data_ = *receive_msg; });
@@ -90,31 +91,41 @@ AutoAimDebugger::AutoAimDebugger(const rclcpp::NodeOptions& options) : rclcpp::N
       std::make_shared<tf2_ros::CreateTimerROS>(this->get_node_base_interface(), this->get_node_timers_interface());
   tf2_buffer_->setCreateTimerInterface(timer_interface);
   tf2_listener_ = std::make_shared<tf2_ros::TransformListener>(*tf2_buffer_);
-  // subscriber and filter
+  // subscriber - 硬触发模式下不需要tf2_filter，直接订阅
   image_sub_.subscribe(this, node_namespace_ + "/image_raw", rmw_qos_profile_sensor_data);
-  // Register a callback with tf2_ros::MessageFilter to be called when transforms are available
-  frame_namespace_ = node_namespace_;
-  if (!frame_namespace_.empty())
-  {
-    frame_namespace_.erase(frame_namespace_.begin());
-    frame_namespace_ = frame_namespace_ + "_";
-  }
-  tf2_filter_ = std::make_shared<tf2_filter>(image_sub_, *tf2_buffer_, frame_namespace_ + "camera_optical_frame", 10,
-                                             this->get_node_logging_interface(), this->get_node_clock_interface(),
-                                             std::chrono::duration<int>(2));
+
   if (!params_.no_hardware)
   {
-    RCLCPP_ERROR(logger_, "11");
-    sync_ = std::make_shared<message_filters::Synchronizer<NormalPolicy>>(NormalPolicy(10), image_sub_, target_sub_);
-    RCLCPP_ERROR(logger_, "222");
+    sync_ = std::make_shared<message_filters::Synchronizer<NormalPolicy>>(NormalPolicy(10), image_sub_, target_sub_, armors_sub_);
     sync_->registerCallback(&AutoAimDebugger::image_callback, this);
   }
   else
   {
     no_hardware_sync_ = std::make_shared<message_filters::Synchronizer<NoHardwarePolicy>>(NoHardwarePolicy(10),
-                                                                                          image_sub_, target_sub_);
+                                                                                          image_sub_, target_sub_, armors_sub_);
     no_hardware_sync_->registerCallback(&AutoAimDebugger::no_hardware_callback, this);
   }
+
+  // 参数回调
+  auto param_change_callback = [this](const std::vector<rclcpp::Parameter>& parameters) {
+    auto result = rcl_interfaces::msg::SetParametersResult();
+    result.successful = true;
+
+    for (const auto& param : parameters) {
+      RCLCPP_INFO(this->get_logger(), "Parameter changed: %s", param.get_name().c_str());
+    }
+
+    // 更新参数
+    if (param_listener_->is_old(params_)) {
+      params_ = param_listener_->get_params();
+      bullet_model_->update_params(params_.air_resistance, receive_data_.bullet_speed);
+      RCLCPP_INFO(this->get_logger(), "Parameters updated");
+    }
+
+    return result;
+  };
+
+  param_callback_ = this->add_on_set_parameters_callback(param_change_callback);
 }
 
 void AutoAimDebugger::init_object_points()
@@ -143,18 +154,17 @@ void AutoAimDebugger::init_object_points()
 }
 
 void AutoAimDebugger::no_hardware_callback(sensor_msgs::msg::Image::SharedPtr msg,
-                                           autoaim_interfaces::msg::Target::SharedPtr target_msg)
+                                           autoaim_interfaces::msg::Target::SharedPtr target_msg,
+                                           autoaim_interfaces::msg::Armors::SharedPtr armors_msg)
 {
-  // Update params
-  if (param_listener_->is_old(params_))
-  {
-    params_ = param_listener_->get_params();
-    RCLCPP_WARN(this->get_logger(), "Update params");
-  }
   /// Convert image
   try
   {
-    raw_image_ = cv_bridge::toCvShare(msg, sensor_msgs::image_encodings::BGR8)->image.clone();
+    raw_image_ = cv_bridge::toCvShare(msg, sensor_msgs::image_encodings::RGB8)->image.clone();
+    // Convert RGB to BGR for OpenCV processing
+    cv::cvtColor(raw_image_, raw_image_, cv::COLOR_RGB2BGR);
+    // 为检测图像创建副本
+    detection_image_ = raw_image_.clone();
   }
   catch (cv_bridge::Exception& e)
   {
@@ -174,34 +184,41 @@ void AutoAimDebugger::no_hardware_callback(sensor_msgs::msg::Image::SharedPtr ms
                                              rclcpp::Duration::from_seconds(0.01));
     odom2cam_ = tf2_buffer_->lookupTransform("odoom", "camera_optical_frame", msg->header.stamp,
                                              rclcpp::Duration::from_seconds(0.01));
-    gimbal2odom_ =
-        tf2_buffer_->lookupTransform("odoom", "pitch_link", msg->header.stamp, rclcpp::Duration::from_seconds(0.01));
+    // gimbal2odom_ =
+    //     tf2_buffer_->lookupTransform("imu_link", "odoom", msg->header.stamp, rclcpp::Duration::from_seconds(0.01));
   }
-  catch (tf2::LookupException& e)
+  catch (tf2::TransformException& e)
   {
     RCLCPP_ERROR(this->get_logger(), "tf2 exception: %s", e.what());
     return;
   }
-  caculate_bullets(target_msg);
+
+  // 在检测图像上只绘制检测相关内容（检测角点+重投影）
+  draw_detected_armors(armors_msg, detection_image_);
+  cv::circle(detection_image_, image_center_, 5, cv::Scalar(0, 0, 255), 2);
+
+  // 在完整调试图像上绘制跟踪预测内容（不包含检测，避免重复）
+  // caculate_bullets(target_msg);
   caculate_target(target_msg);
-  // Draw image center
   cv::circle(raw_image_, image_center_, 5, cv::Scalar(0, 0, 255), 2);
+
+  // 发布两个图像
   image_pub_.publish(cv_bridge::CvImage(msg->header, sensor_msgs::image_encodings::BGR8, raw_image_).toImageMsg());
+  // detection_image_pub_.publish(cv_bridge::CvImage(msg->header, sensor_msgs::image_encodings::BGR8, detection_image_).toImageMsg());
 }
 
 void AutoAimDebugger::image_callback(sensor_msgs::msg::Image::SharedPtr msg,
-                                     autoaim_interfaces::msg::Target::SharedPtr target_msg)
+                                     autoaim_interfaces::msg::Target::SharedPtr target_msg,
+                                     autoaim_interfaces::msg::Armors::SharedPtr armors_msg)
 {
-  // Update params
-  if (param_listener_->is_old(params_))
-  {
-    params_ = param_listener_->get_params();
-    RCLCPP_WARN(this->get_logger(), "Update params");
-  }
   /// Convert image
   try
   {
-    raw_image_ = cv_bridge::toCvShare(msg, sensor_msgs::image_encodings::BGR8)->image.clone();
+    raw_image_ = cv_bridge::toCvShare(msg, sensor_msgs::image_encodings::RGB8)->image.clone();
+    // Convert RGB to BGR for OpenCV processing
+    cv::cvtColor(raw_image_, raw_image_, cv::COLOR_RGB2BGR);
+    // 为检测图像创建副本
+    detection_image_ = raw_image_.clone();
   }
   catch (cv_bridge::Exception& e)
   {
@@ -217,30 +234,36 @@ void AutoAimDebugger::image_callback(sensor_msgs::msg::Image::SharedPtr msg,
   // Get transform infomation
   try
   {
-    rclcpp::Duration timeout(0, 100000000);
     cam2odom_ = tf2_buffer_->lookupTransform("camera_optical_frame", "odoom", msg->header.stamp,
-                                             rclcpp::Duration::from_seconds(0.1));
+                                             rclcpp::Duration::from_seconds(1.0));
     odom2cam_ = tf2_buffer_->lookupTransform("odoom", "camera_optical_frame", msg->header.stamp,
-                                             rclcpp::Duration::from_seconds(0.1));
-    gimbal2odom_ =
-        tf2_buffer_->lookupTransform("pitch_link", "odoom", msg->header.stamp, rclcpp::Duration::from_seconds(0.1));
+                                             rclcpp::Duration::from_seconds(1.0));
+  //   gimbal2odom_ =
+  //       tf2_buffer_->lookupTransform("imu_link", "odoom", msg->header.stamp, rclcpp::Duration::from_seconds(0.1));
   }
-  catch (tf2::LookupException& e)
+  catch (tf2::TransformException& e)
   {
     RCLCPP_ERROR(this->get_logger(), "tf2 exception: %s", e.what());
     return;
   }
+
+  // 在检测图像上只绘制检测相关内容（检测角点+重投影）
+  // draw_detected_armors(armors_msg, detection_image_);
+  // cv::circle(detection_image_, image_center_, 5, cv::Scalar(0, 0, 255), 2);
+
+  // 在完整调试图像上绘制跟踪预测内容（不包含检测，避免重复）
   // caculate_bullets(target_msg);
   caculate_target(target_msg);
   draw_predicted_points();
-  // Draw image center
   cv::circle(raw_image_, image_center_, 5, cv::Scalar(0, 0, 255), 2);
+
+  // 发布两个图像
   image_pub_.publish(cv_bridge::CvImage(msg->header, sensor_msgs::image_encodings::BGR8, raw_image_).toImageMsg());
+  // detection_image_pub_.publish(cv_bridge::CvImage(msg->header, sensor_msgs::image_encodings::BGR8, detection_image_).toImageMsg());
 }
 
 void AutoAimDebugger::draw_predicted_points()
 {
-    // RCLCPP_WARN(logger_, "draw_predicted_points");
   /// Draw Prediction Point
   geometry_msgs::msg::Point point;
   point.x = receive_data_.x;
@@ -399,8 +422,6 @@ void AutoAimDebugger::draw_predicted_points()
 //     }
 //   }
 // }
-
-// [AutoAimDebugger.cpp]
 void AutoAimDebugger::caculate_target(autoaim_interfaces::msg::Target::SharedPtr target_msg)
 {
   if (target_msg->tracking)
@@ -448,10 +469,7 @@ void AutoAimDebugger::caculate_target(autoaim_interfaces::msg::Target::SharedPtr
 
         geometry_msgs::msg::Pose pose;
         pose.position = p_a;
-        
-        // 设置装甲板朝向
         tf2::Quaternion q;
-        // Outpost 有特定的倾斜角，其他车辆默认为 15 度 (0.26 rad)
         q.setRPY(0, target_msg->id == "outpost" ? -0.26 : 0.26, tmp_yaw);
         pose.orientation = tf2::toMsg(q);
 
@@ -467,7 +485,6 @@ void AutoAimDebugger::caculate_target(autoaim_interfaces::msg::Target::SharedPtr
        pose.position = target_msg->position;
        target_pose_ros_.emplace_back(pose);
     }
-    // energy empty
 
     try
     {
@@ -478,13 +495,11 @@ void AutoAimDebugger::caculate_target(autoaim_interfaces::msg::Target::SharedPtr
     }
     catch (tf2::TransformException& e)
     {
-      RCLCPP_ERROR(this->get_logger(), "tf2 exception: %s", e.what());
       return;
     }
 
-    int best_target_idx = -1;
-    double min_dist_sq = DBL_MAX;
-    std::vector<cv::Point2f> centers_2d;
+    int best_target_idx = target_msg->armor_id;
+    if (target_msg->armors_num == 1) best_target_idx = 0;
 
     for (size_t i = 0; i < target_pose_ros_.size(); i++)
     {
@@ -494,139 +509,181 @@ void AutoAimDebugger::caculate_target(autoaim_interfaces::msg::Target::SharedPtr
       cv::Quatd q(target_pose_ros_[i].orientation.w, target_pose_ros_[i].orientation.x, 
                   target_pose_ros_[i].orientation.y, target_pose_ros_[i].orientation.z);
       
-      target_tvecs_.emplace_back(tvec);
-      target_rvecs_.emplace_back(q);
-
-      std::vector<cv::Point3f> center_3d = {cv::Point3f(0,0,0)};
-      std::vector<cv::Point2f> center_2d_vec;
-      cv::projectPoints(center_3d, q.toRotMat3x3(), tvec, camera_matrix_, distortion_coefficients_, center_2d_vec);
-      
-      if (!center_2d_vec.empty()) {
-        centers_2d.push_back(center_2d_vec[0]);
-        double dist_sq = std::pow(center_2d_vec[0].x - image_center_.x, 2) + 
-                         std::pow(center_2d_vec[0].y - image_center_.y, 2);
-        if (target_pose_ros_[i].position.z > 0 && dist_sq < min_dist_sq) {
-          min_dist_sq = dist_sq;
-          best_target_idx = i;
-        }
-      } else {
-        centers_2d.push_back(cv::Point2f(-1, -1));
-      }
-    }
-
-    for (std::size_t i = 0; i < target_tvecs_.size(); i++)
-    {
-      if (target_tvecs_[i].at<double>(2) <= 0) continue;
+      if (tvec.at<double>(2) <= 0) continue;
 
       std::vector<cv::Point2f> image_points;
-
-      cv::projectPoints(armor_object_points_, target_rvecs_[i].toRotMat3x3(), target_tvecs_[i], 
+      cv::projectPoints(armor_object_points_, q.toRotMat3x3(), tvec, 
                         camera_matrix_, distortion_coefficients_, image_points);
 
-      cv::Scalar line_color = (int)i == best_target_idx ? cv::Scalar(0, 0, 255) : cv::Scalar(255, 255, 0); // BGR
-      int thickness = (int)i == best_target_idx ? 3 : 1;
+      bool is_hit_target = ((int)i == best_target_idx);
+      cv::Scalar line_color = is_hit_target ? cv::Scalar(0, 0, 255) : cv::Scalar(0, 255, 255); 
 
       for (size_t j = 0; j < image_points.size(); j++)
       {
         cv::line(raw_image_, image_points[j], image_points[(j + 1) % image_points.size()], 
-                 line_color, thickness);
+                 line_color, 4);
       }
       
-      if (i < centers_2d.size()) {
-          cv::circle(raw_image_, centers_2d[i], 4, line_color, -1);
-          if ((int)i == best_target_idx) {
-             cv::putText(raw_image_, "HIT", centers_2d[i] + cv::Point2f(10, -10), 
-                         cv::FONT_HERSHEY_SIMPLEX, 0.8, cv::Scalar(0, 0, 255), 2);
+      if (!image_points.empty()) {
+          cv::Point2f corner_tr = image_points[2];
+          
+          cv::putText(raw_image_, std::to_string(i), corner_tr + cv::Point2f(5, -5), 
+                      cv::FONT_HERSHEY_SIMPLEX, 1.0, line_color, 3);
+
+          std::vector<cv::Point3f> center_3d = {cv::Point3f(0,0,0)};
+          std::vector<cv::Point2f> center_2d_vec;
+          cv::projectPoints(center_3d, q.toRotMat3x3(), tvec, camera_matrix_, distortion_coefficients_, center_2d_vec);
+          if(!center_2d_vec.empty()) {
+             cv::circle(raw_image_, center_2d_vec[0], 2, line_color, -1);
+             if (is_hit_target) {
+                 cv::putText(raw_image_, "HIT", center_2d_vec[0] + cv::Point2f(0, 20), 
+                             cv::FONT_HERSHEY_SIMPLEX, 1.0, cv::Scalar(0, 0, 255), 3);
+             }
           }
       }
     }
   }
 }
 
-void AutoAimDebugger::caculate_bullets(autoaim_interfaces::msg::Target::SharedPtr target_msg)
-{
-  double dt = (this->now() - last_time_).seconds();
-  last_time_ = this->now();
-  // Get yaw and pitch from gimbal2odom
-  tf2::Quaternion q(gimbal2odom_.transform.rotation.x, gimbal2odom_.transform.rotation.y,
-                    gimbal2odom_.transform.rotation.z, gimbal2odom_.transform.rotation.w);
-  double yaw, pitch, roll;
-  tf2::Matrix3x3(q).getRPY(roll, pitch, yaw);
-  // RCLCPP_WARN(logger_, "yaw %f pitch %f roll %f", yaw, pitch, roll);
-  bullet_model_->update_params(params_.air_resistance, receive_data_.bullet_speed);
-  if (target_msg->tracking)
-  {
-    bullet_model_->add_new_bullet(
-        yaw, -pitch, Eigen::Vector3d{ target_msg->position.x, target_msg->position.y, target_msg->position.z });
-  }
-  bullet_model_->update_bullets_status(dt);
-  bullet_tvecs_ = bullet_model_->get_bullet_positions_in_imu();
-  // transform bullets to camera optical frame
-  std::vector<cv::Quatd> bullet_rvecs;
+// void AutoAimDebugger::caculate_bullets(autoaim_interfaces::msg::Target::SharedPtr target_msg)
+// {
+//   double dt = (this->now() - last_time_).seconds();
+//   last_time_ = this->now();
+//   // Get yaw and pitch from gimbal2odom
+//   tf2::Quaternion q(gimbal2odom_.transform.rotation.x, gimbal2odom_.transform.rotation.y,
+//                     gimbal2odom_.transform.rotation.z, gimbal2odom_.transform.rotation.w);
+//   double yaw, pitch, roll;
+//   tf2::Matrix3x3(q).getRPY(roll, pitch, yaw);
+//   bullet_model_->update_params(params_.air_resistance, receive_data_.bullet_speed);
+//   if (target_msg->tracking)
+//   {
+//     bullet_model_->add_new_bullet(
+//         yaw, -pitch, Eigen::Vector3d{ target_msg->position.x, target_msg->position.y, target_msg->position.z });
+//   }
+//   bullet_model_->update_bullets_status(dt);
+//   bullet_tvecs_ = bullet_model_->get_bullet_positions_in_imu();
+//   // transform bullets to camera optical frame
+//   std::vector<cv::Quatd> bullet_rvecs;
 
-  try
-  {
-    for (auto& tvec : bullet_tvecs_)
-    {
-      geometry_msgs::msg::Pose point;
-      point.orientation.w = 1;
-      point.orientation.x = 0;
-      point.orientation.y = 0;
-      point.orientation.z = 0;
-      point.position.x = tvec.at<double>(0, 0);
-      point.position.y = tvec.at<double>(1, 0);
-      point.position.z = tvec.at<double>(2, 0);
-      tf2::doTransform(point, point, cam2odom_);
-      tvec.at<double>(0, 0) = point.position.x;
-      tvec.at<double>(1, 0) = point.position.y;
-      tvec.at<double>(2, 0) = point.position.z;
-      bullet_rvecs.emplace_back(
-          cv::Quatd{ point.orientation.w, point.orientation.x, point.orientation.y, point.orientation.z });
-    }
-  }
-  catch (tf2::TransformException& e)
-  {
-    RCLCPP_ERROR(logger_, "catch %s in bullet solve", e.what());
-  }
+//   try
+//   {
+//     for (auto& tvec : bullet_tvecs_)
+//     {
+//       geometry_msgs::msg::Pose point;
+//       point.orientation.w = 1;
+//       point.orientation.x = 0;
+//       point.orientation.y = 0;
+//       point.orientation.z = 0;
+//       point.position.x = tvec.at<double>(0, 0);
+//       point.position.y = tvec.at<double>(1, 0);
+//       point.position.z = tvec.at<double>(2, 0);
+//       tf2::doTransform(point, point, cam2odom_);
+//       tvec.at<double>(0, 0) = point.position.x;
+//       tvec.at<double>(1, 0) = point.position.y;
+//       tvec.at<double>(2, 0) = point.position.z;
+//       bullet_rvecs.emplace_back(
+//           cv::Quatd{ point.orientation.w, point.orientation.x, point.orientation.y, point.orientation.z });
+//     }
+//   }
+//   catch (tf2::TransformException& e)
+//   {
+//     RCLCPP_ERROR(logger_, "catch %s in bullet solve", e.what());
+//   }
 
-  // for (int i = 0; i < bullet_tvecs_.size(); i++)
-  //     RCLCPP_WARN(logger_, "X: %f, Y: %f, Z: %f", bullet_tvecs_[i].at<double>(0, 0), bullet_tvecs_[i].at<double>(1,
-  //     0), bullet_tvecs_[i].at<double>(2, 0));
+//   // Draw Bullet tracks
+//   for (std::size_t i = 1; i < bullet_tvecs_.size(); i++)
+//   {
+//     std::vector<cv::Point2f> image_points;
+//     cv::projectPoints(bullet_object_points_, bullet_rvecs[i].toRotMat3x3(), bullet_tvecs_[i], camera_matrix_,
+//                       distortion_coefficients_, image_points);
+//     cv::Point2f bullet_center = (image_points[0] + image_points[1] + image_points[2] + image_points[3]) / 4;
+//     // caculate radius
+//     double radius = cv::norm(bullet_center - image_points[0]);
+//     if (radius < 2)
+//     {
+//       radius = 2;
+//     }
 
-  // Draw Bullet tracks
-  for (std::size_t i = 1; i < bullet_tvecs_.size(); i++)
-  {
-    std::vector<cv::Point2f> image_points;
-    cv::projectPoints(bullet_object_points_, bullet_rvecs[i].toRotMat3x3(), bullet_tvecs_[i], camera_matrix_,
-                      distortion_coefficients_, image_points);
-    cv::Point2f bullet_center = (image_points[0] + image_points[1] + image_points[2] + image_points[3]) / 4;
-    // caculate radius
-    double radius = cv::norm(bullet_center - image_points[0]);
-    if (radius < 2)
-    {
-      radius = 2;
-    }
+//     if (std::isnan(bullet_center.x) || std::isnan(bullet_center.y) ||
+//         std::isinf(bullet_center.x) || std::isinf(bullet_center.y)) {
+//       continue;
+//     }
 
-    if (std::isnan(bullet_center.x) || std::isnan(bullet_center.y) || 
-    std::isinf(bullet_center.x) || std::isinf(bullet_center.y)) {
-    // RCLCPP_WARN(logger_, "Invalid bullet_center coordinates: x=%f, y=%f", bullet_center.x, bullet_center.y);
-    continue; 
-    }
+//     if (bullet_center.x < 0 || bullet_center.y < 0 ||
+//         bullet_center.x >= raw_image_.cols || bullet_center.y >= raw_image_.rows) {
+//       continue;
+//     }
 
-    if (bullet_center.x < 0 || bullet_center.y < 0 || 
-    bullet_center.x >= raw_image_.cols || bullet_center.y >= raw_image_.rows) {
-    // RCLCPP_WARN(logger_, "Bullet center outside image: x=%f, y=%f, img_size=%dx%d", 
-    //           bullet_center.x, bullet_center.y, raw_image_.cols, raw_image_.rows);
-    continue; 
-    }
+//     cv::circle(raw_image_, bullet_center, radius, cv::Scalar(255, 0, 0), 4);
+//   }
+// }
 
-    cv::circle(raw_image_, bullet_center, radius, cv::Scalar(255, 0, 0), 4);
-    // RCLCPP_WARN(logger_, "bullet x %f, y %f", bullet_center.x, bullet_center.y);
-    // RCLCPP_WARN(logger_, "radius %f", radius);
-    // cv::putText(raw_image_, std::to_string(bullet_distance_[i]), image_points[2], cv::FONT_HERSHEY_SIMPLEX, 0.8,
-    // cv::Scalar(0, 255, 255), 2);
-  }
-}
+// void AutoAimDebugger::draw_detected_armors(autoaim_interfaces::msg::Armors::SharedPtr armors_msg, cv::Mat& target_image)
+// {
+//   if (!armors_msg || armors_msg->armors.empty())
+//   {
+//     return;
+//   }
+
+//   // Draw detected armors from detector
+//   for (const auto& armor : armors_msg->armors)
+//   {
+//     // 装甲板四个角点（检测结果）
+//     // 顺序：左下、左上、右上、右下
+//     std::vector<cv::Point2f> armor_corners = {
+//       cv::Point2f(armor.corners[0].x, armor.corners[0].y),  // 左下
+//       cv::Point2f(armor.corners[1].x, armor.corners[1].y),  // 左上
+//       cv::Point2f(armor.corners[2].x, armor.corners[2].y),  // 右上
+//       cv::Point2f(armor.corners[3].x, armor.corners[3].y)   // 右下
+//     };
+
+//     // 1. 绘制灯条（高亮显示，粗线）
+//     // 左灯条：左下 → 左上（青色粗线）
+//     cv::line(target_image, armor_corners[0], armor_corners[1], cv::Scalar(255, 255, 0), 4);
+//     // 右灯条：右下 → 右上（青色粗线）
+//     cv::line(target_image, armor_corners[3], armor_corners[2], cv::Scalar(255, 255, 0), 4);
+
+//     // 2. 绘制装甲板上下边框（绿色细线）
+//     cv::line(target_image, armor_corners[1], armor_corners[2], cv::Scalar(0, 255, 0), 1);  // 上边
+//     cv::line(target_image, armor_corners[0], armor_corners[3], cv::Scalar(0, 255, 0), 1);  // 下边
+
+//     // 3. 绘制灯条端点（绿色圆圈）
+//     for (const auto& pt : armor_corners)
+//     {
+//       cv::circle(target_image, pt, 5, cv::Scalar(0, 255, 0), -1);
+//     }
+
+//     // 4. 绘制PnP重投影点（红色）
+//     // Detector发布的armor pose已经在相机坐标系下，直接使用即可
+//     cv::Mat tvec = (cv::Mat_<double>(3, 1) << armor.pose.position.x, armor.pose.position.y, armor.pose.position.z);
+//     cv::Quatd q(armor.pose.orientation.w, armor.pose.orientation.x, armor.pose.orientation.y, armor.pose.orientation.z);
+
+//     // Project armor corners (使用3D物理尺寸)
+//     std::vector<cv::Point2f> projected_points;
+//     cv::projectPoints(armor_object_points_, q.toRotMat3x3(), tvec, camera_matrix_,
+//                       distortion_coefficients_, projected_points);
+
+//     // 绘制重投影轮廓（红色）
+//     for (size_t i = 0; i < projected_points.size(); i++)
+//     {
+//       cv::line(target_image, projected_points[i], projected_points[(i + 1) % projected_points.size()],
+//                cv::Scalar(0, 0, 255), 2);
+//     }
+
+//     // 绘制重投影角点（红色）
+//     for (const auto& pt : projected_points)
+//     {
+//       cv::circle(target_image, pt, 3, cv::Scalar(0, 0, 255), -1);
+//     }
+
+//     // 5. 绘制装甲板编号和距离信息（黄色）
+//     float distance_cm = tvec.at<double>(2) * 100.0;  // 米转厘米
+//     cv::Point2f center = (armor_corners[0] + armor_corners[1] + armor_corners[2] + armor_corners[3]) / 4.0f;
+//     std::string info = armor.number + " " + std::to_string(static_cast<int>(distance_cm)) + "cm";
+//     cv::putText(target_image, info, center + cv::Point2f(0, -20),
+//                 cv::FONT_HERSHEY_SIMPLEX, 0.8, cv::Scalar(0, 255, 255), 2);
+//   }
+// }
 
 }  // namespace helios_cv
 

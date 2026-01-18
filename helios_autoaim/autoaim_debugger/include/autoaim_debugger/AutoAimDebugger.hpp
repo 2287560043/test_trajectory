@@ -72,10 +72,13 @@ public:
 private:
   void init_object_points();
 
-  void image_callback(sensor_msgs::msg::Image::SharedPtr msg, autoaim_interfaces::msg::Target::SharedPtr target_msg);
+  void image_callback(sensor_msgs::msg::Image::SharedPtr msg,
+                      autoaim_interfaces::msg::Target::SharedPtr target_msg,
+                      autoaim_interfaces::msg::Armors::SharedPtr armors_msg);
 
   void no_hardware_callback(sensor_msgs::msg::Image::SharedPtr msg,
-                            autoaim_interfaces::msg::Target::SharedPtr target_msg);
+                            autoaim_interfaces::msg::Target::SharedPtr target_msg,
+                            autoaim_interfaces::msg::Armors::SharedPtr armors_msg);
 
   std::string node_namespace_;
   std::string frame_namespace_;
@@ -84,25 +87,28 @@ private:
   rclcpp::Subscription<sensor_msgs::msg::CameraInfo>::SharedPtr camera_info_sub_;
 
   message_filters::Subscriber<autoaim_interfaces::msg::Target> target_sub_;
-  // message_filters::Subscriber<autoaim_interfaces::msg::ReceiveData> receive_data_sub_;
+  message_filters::Subscriber<autoaim_interfaces::msg::Armors> armors_sub_;
 
   rclcpp::Subscription<autoaim_interfaces::msg::ReceiveData>::SharedPtr receive_data_sub_;
   autoaim_interfaces::msg::ReceiveData receive_data_;
 
-  image_transport::Publisher image_pub_;
+  image_transport::Publisher image_pub_;  // 完整调试图像（包含跟踪、预测、子弹轨迹等）
+  image_transport::Publisher detection_image_pub_;  // 仅检测相关图像（检测角点+重投影）
 
-  using tf2_filter = tf2_ros::MessageFilter<sensor_msgs::msg::Image>;
   // tf2 utilities
   std::shared_ptr<tf2_ros::Buffer> tf2_buffer_;
   std::shared_ptr<tf2_ros::TransformListener> tf2_listener_;
   message_filters::Subscriber<sensor_msgs::msg::Image> image_sub_;
-  std::shared_ptr<tf2_filter> tf2_filter_;
 
   using NormalPolicy =
-      message_filters::sync_policies::ApproximateTime<sensor_msgs::msg::Image, autoaim_interfaces::msg::Target>;
+      message_filters::sync_policies::ApproximateTime<sensor_msgs::msg::Image,
+                                                       autoaim_interfaces::msg::Target,
+                                                       autoaim_interfaces::msg::Armors>;
 
   using NoHardwarePolicy =
-      message_filters::sync_policies::ApproximateTime<sensor_msgs::msg::Image, autoaim_interfaces::msg::Target>;
+      message_filters::sync_policies::ApproximateTime<sensor_msgs::msg::Image,
+                                                       autoaim_interfaces::msg::Target,
+                                                       autoaim_interfaces::msg::Armors>;
 
   std::shared_ptr<message_filters::Synchronizer<NormalPolicy>> sync_;
   std::shared_ptr<message_filters::Synchronizer<NoHardwarePolicy>> no_hardware_sync_;
@@ -123,14 +129,12 @@ private:
   std::vector<cv::Point3f> energy_object_points_;
   std::vector<cv::Point3f> bullet_object_points_;
 
-  std::vector<cv::Mat> detect_tvecs_;
-  std::vector<cv::Quatd> detect_rvecs_;
-  std::vector<std::string> armor_text_;
-
   std::vector<geometry_msgs::msg::Pose> target_pose_ros_;
   std::vector<cv::Mat> target_tvecs_;
   std::vector<cv::Quatd> target_rvecs_;
   void caculate_target(autoaim_interfaces::msg::Target::SharedPtr target_msg);
+
+  void draw_detected_armors(autoaim_interfaces::msg::Armors::SharedPtr armors_msg, cv::Mat& target_image);
 
   std::shared_ptr<BulletModel> bullet_model_;
   std::vector<cv::Mat> bullet_tvecs_;
@@ -139,13 +143,13 @@ private:
   void caculate_bullets(autoaim_interfaces::msg::Target::SharedPtr target_msg);
 
   // raw image
-  cv::Mat raw_image_;
-  bool is_armor_observer_;
-  bool is_energy_observer_;
+  cv::Mat raw_image_;  // 完整调试图像
+  cv::Mat detection_image_;  // 仅检测图像
 
   // params
   Params params_;
   std::shared_ptr<ParamListener> param_listener_;
+  rclcpp::node_interfaces::OnSetParametersCallbackHandle::SharedPtr param_callback_;
 
   // logger
   rclcpp::Logger logger_ = rclcpp::get_logger("AutoAimDebugger");
