@@ -212,78 +212,6 @@ Eigen::Vector3d StandardObserver::get_armor_position(const Eigen::VectorXd& stat
     );
 }
 
-// // [add] 返回最优 armor_id (0-3)
-// int StandardObserver::select_best_armor_id(const Eigen::VectorXd& state, double fly_time)
-// {
-//     Eigen::VectorXd pred_state = state;
-//     pred_state(0) += state(1) * fly_time; 
-//     pred_state(2) += state(3) * fly_time; 
-//     pred_state(8) += state(9) * fly_time;
-    
-//     int best_id = -1;
-//     double min_swing_cost = 1e9;      // 枪口转动代价
-//     double min_wait_time = 1e9;       // 预瞄等待时间
-//     bool found_direct_aim = false;    // 是否找到正对的板
-
-//     double car_yaw = pred_state(8);
-//     double car_w = pred_state(9);
-
-//     double center_angle = std::atan2(pred_state(2), pred_state(0)); 
-
-//     RCLCPP_INFO(logger_, "");
-//     for (int i = 0; i < 4; i++) {
-//         // 当前装甲板的朝向角 (odoom frame)
-//         double armor_yaw = car_yaw + i * (M_PI / 2.0);
-//         armor_yaw = angles::normalize_angle(armor_yaw);
-
-//         // armor 朝向和 gimbal 朝向的角度差
-//         double orientation_diff = std::abs(angles::shortest_angular_distance(armor_yaw, center_angle));
-//         RCLCPP_INFO(logger_, "armor %d: armor_yaw:%f", i, armor_yaw);
-//         RCLCPP_INFO(logger_, "orientation_diff:%f", orientation_diff);
-        
-//         // 计算当前云台 Yaw 到该装甲板的 Swing Cost
-//         // 注意：这里需要粗略计算装甲板的方位角
-//         Eigen::Vector3d armor_pos = get_armor_position(pred_state, i);
-//         double armor_azimuth = std::atan2(armor_pos.y(), armor_pos.x());
-//         double swing_cost = std::abs(angles::shortest_angular_distance(gimbal_yaw_, armor_azimuth));
-
-//         if (orientation_diff < MAX_ORIENTATION_ANGLE) {
-//             // ---> Direct Aim (直接击打模式)
-//             // 找到一个正对的板，优先选择 Swing Cost 最小的
-//             if (!found_direct_aim || swing_cost < min_swing_cost) {
-//                 best_id = i;
-//                 min_swing_cost = swing_cost;
-//                 found_direct_aim = true;
-//             }
-//         } 
-//         else if (!found_direct_aim) {
-//             // ---> Indirect Aim (预瞄/阴枪模式)
-//             // 如果目前没有正对的板，寻找 "即将" 转过来的板
-//             // 计算转到正对位置需要转过的角度
-//             double angle_to_face = angles::shortest_angular_distance(armor_yaw, center_angle + M_PI);
-            
-//             // 只有当旋转方向正确时，这个板才会转过来
-//             // car_w > 0 (逆时针), 需要 angle_to_face > 0 吗？
-//             // shortest_angular_distance 返回的是 (target - current)
-//             // 如果 w > 0, 角度在增加。我们需要 target > current，即 diff > 0
-            
-//             if ((car_w > 0.1 && angle_to_face > 0) || (car_w < -0.1 && angle_to_face < 0)) {
-//                 double time_to_face = std::abs(angle_to_face / car_w);
-//                 if (time_to_face < min_wait_time) {
-//                     min_wait_time = time_to_face;
-//                     best_id = i;
-//                 }
-//             }
-//         }
-//     }
-
-//     if (best_id == -1) {
-//          return 0; // 或者保留上一次的 ID
-//     }
-
-//     return best_id;
-// }
-
 // [add] 返回最优的 armor_id (0-3)
 int StandardObserver::select_best_armor_id(const Eigen::VectorXd& state, double fly_time)
 {
@@ -297,35 +225,27 @@ int StandardObserver::select_best_armor_id(const Eigen::VectorXd& state, double 
     double max_score = -1e9;
 
     const double LOCK_BONUS = 0.3; // temp
-
+    RCLCPP_INFO(logger_, "");
     for (int i = 0; i < 4; i++) {
-        // 计算预测时刻该装甲板的 Yaw
         double armor_yaw = pred_yaw + i * (M_PI / 2.0);
         armor_yaw = angles::normalize_angle(armor_yaw);
 
-        // 计算 "Yaw Error" (偏离正对视角的程度)
-        // 对应 Jiaolong 代码中 "get_dis(d1.center, img_center)" 的几何投影版
-        double yaw_diff = std::abs(angles::shortest_angular_distance(angle_enemy_to_camera, armor_yaw));
-
-        // 如果偏角过大 (比如超过 60 度)，认为视觉上不可见或容易跳弹，直接跳过
+        // gimbal 和 armor 的朝向角差
+        double yaw_diff = std::abs(angles::shortest_angular_distance(angle_enemy_to_camera, armor_yaw + M_PI));
+        RCLCPP_INFO(logger_, "armor %d: yaw_diff:%f", i, yaw_diff);
         if (yaw_diff > (60.0 * M_PI / 180.0)) {
             continue;
         }
-
-        // --- 核心评分逻辑 ---
-        // 使用 cos(diff) 作为基础分：
-        // diff = 0 (正对) -> score = 1
-        // diff = 60 (边缘) -> score = 0.5
+        
+        // cos()先用着
         double score = std::cos(yaw_diff);
 
-        // --- 复现 Jiaolong 的 TargetCatcher 锁定逻辑 ---
-        // 如果这个板子是上一次选中的 (last_armor_id_)，且它现在还是可见的 (即代码没continue)
-        // 那么强行加分，使得除非另一块板优势巨大，否则不切换。
+        
+        // 如果上一次选中的 armor 看不见了则不做加分
         if (i == last_armor_id_) {
             score += LOCK_BONUS;
         }
 
-        // 更新最优解
         if (score > max_score) {
             max_score = score;
             best_id = i;
@@ -529,6 +449,141 @@ autoaim_interfaces::msg::Target StandardObserver::predict_target(autoaim_interfa
   return target;
 }
 
+void StandardObserver::track_armor(autoaim_interfaces::msg::Armor armor)
+{
+  
+  bool matched = false;
+  Eigen::VectorXd measurement;
+  yaw_vel_prev_ = target_state_(8);
+  target_state_ = ekf_.Predict();
+
+
+      autoaim_interfaces::msg::Armors same_id_armor;
+      autoaim_interfaces::msg::Armors standard_armor;
+
+      armor_type_ = ARMOR_TYPE_STR[tracking_armor_.type];
+
+      
+          if (armor.number == tracking_number_) 
+            same_id_armor.armors.emplace_back(armor);
+      
+
+      if (same_id_armor.armors.empty()) {
+        find_state_ = TEMP_LOST;
+      } else {
+        if (!same_id_armor.armors.empty()) {
+          for (int i = 0; i < 4; i++) {
+            // Get predictions
+            double pre_yaw = target_state_(8);
+            double angle = pre_yaw + M_PI_2 * i;
+            autoaim_interfaces::msg::Armor armor;
+            armor.pose.position.x = target_state_(0) - target_state_(6 + i % 2) * std::cos(angle);
+            armor.pose.position.y = target_state_(2) - target_state_(6 + i % 2) * std::sin(angle);
+            armor.pose.position.z = target_state_(4 + i % 2);
+            tf2::Quaternion tf_q;
+            tf_q.setRPY(0, angles::from_degrees(15.0), angle);
+            armor.pose.orientation = tf2::toMsg(tf_q);
+            standard_armor.armors.emplace_back(armor);
+          }
+          Eigen::MatrixXd score = getScoreMat(same_id_armor.armors, standard_armor.armors);
+          armor_match_ = getMatch(score, m_score_tolerance, 4);
+
+
+          double pred_car_yaw = target_state_(8); 
+          double yaw_vel = target_state_(9);
+
+
+          for (auto& match : armor_match_) {
+              int obs_idx = match.first; 
+              int geo_sec = match.second;
+              
+              double obs_armor_yaw = orientation2yaw(same_id_armor.armors[obs_idx].pose.orientation);
+              
+              // RCLCPP_INFO(logger_ ,"id:%d, geo_sec:%d, obs_armor_yaw:%.2f", obs_idx, geo_sec, obs_armor_yaw);
+
+              // 结合观测的yaw，判断基于EKF的相位是否合理
+              double theoretical_yaw_geo = pred_car_yaw + geo_sec * M_PI / 2.0;
+              double diff_yaw = std::abs(angles::shortest_angular_distance(theoretical_yaw_geo, obs_armor_yaw));
+
+              // 如果不合理，结合当前观测的yaw，重新判断相位
+              if (diff_yaw > 0.5) { 
+                  
+                  int best_sec = geo_sec;
+                  double min_diff = 1e9;
+
+                  for (int k = 0; k < 4; k++) {
+                      double theoretical_yaw_k = pred_car_yaw + k * M_PI / 2.0;
+                      double diff = std::abs(angles::shortest_angular_distance(theoretical_yaw_k, obs_armor_yaw));
+                      
+                      if (diff < min_diff) {
+                          min_diff = diff;
+                          best_sec = k;
+                      }
+                  }
+                  
+                  if (best_sec != geo_sec) {
+                      if (min_diff < diff_yaw - 0.1) {
+                           RCLCPP_WARN(logger_, "[Spinning] Jump! %d -> %d. Diff: %.2f -> %.2f", 
+                                      geo_sec, best_sec, diff_yaw, min_diff);
+                           match.second = best_sec; 
+                      }
+                  }
+              } 
+
+              // RCLCPP_INFO(logger_, "id:%d, final_sec:%d, obs_yaw:%.2f", obs_idx, match.second, obs_armor_yaw);
+          }
+          // RCLCPP_INFO(logger_, " ");
+
+          if (armor_match_.size() == 1) {
+            int num = armor_match_.begin()->first;
+            measurement.resize(4);
+            measurement << same_id_armor.armors[num].pose.position.x, 
+                           same_id_armor.armors[num].pose.position.y,
+                           same_id_armor.armors[num].pose.position.z, 
+                           orientation2yaw(same_id_armor.armors[num].pose.orientation);
+            matched = true;
+            target_state_ = ekf_.Correct(measurement);
+          } else if (armor_match_.size() == 2) {
+            RCLCPP_ERROR(logger_, "two armors");
+            int num1 = armor_match_.begin()->first;
+            int num2 = (++armor_match_.begin())->first;
+            measurement.resize(8);
+            measurement << same_id_armor.armors[num1].pose.position.x, 
+                           same_id_armor.armors[num1].pose.position.y,
+                           same_id_armor.armors[num1].pose.position.z, 
+                           orientation2yaw(same_id_armor.armors[num1].pose.orientation),
+                           same_id_armor.armors[num2].pose.position.x, 
+                           same_id_armor.armors[num2].pose.position.y, 
+                           same_id_armor.armors[num2].pose.position.z, 
+                           orientation2yaw(same_id_armor.armors[num2].pose.orientation);
+            matched = true;
+            target_state_ = ekf_.Correct(measurement);
+          } else {
+            RCLCPP_WARN(logger_, "no matched armor found! matched armor num: %ld", armor_match_.size());
+          }
+        }
+      }
+  
+
+  // Prevent radius from spreading
+  if (target_state_(6) < 0.2) {
+    target_state_(6) = 0.2;
+    ekf_.setState(target_state_);
+  } else if (target_state_(6) > 0.4) {
+    target_state_(6) = 0.4;
+    ekf_.setState(target_state_);
+  } 
+  
+  if (target_state_(7) < 0.2) {
+    target_state_(7) = 0.2;
+    ekf_.setState(target_state_);
+  } else if (target_state_(7) > 0.4) {
+    target_state_(7) = 0.4;
+    ekf_.setState(target_state_);
+  }
+
+  update_state_machine(matched);
+}
 void StandardObserver::track_armor(autoaim_interfaces::msg::Armors armors)
 {
   
@@ -624,6 +679,7 @@ void StandardObserver::track_armor(autoaim_interfaces::msg::Armors armors)
             matched = true;
             target_state_ = ekf_.Correct(measurement);
           } else if (armor_match_.size() == 2) {
+            RCLCPP_ERROR(logger_, "two armors");
             int num1 = armor_match_.begin()->first;
             int num2 = (++armor_match_.begin())->first;
             measurement.resize(8);

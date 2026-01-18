@@ -55,21 +55,21 @@ public:
   void set_params(void* params) override;
 
   // Trajectory get_trajectory(double yaw0, double bullet_speed);
-
+  
+  void track_armor(autoaim_interfaces::msg::Armor armor);
 
 protected:
   StandardObserver() = default;
 
-  void track_armor(autoaim_interfaces::msg::Armors armors)override;
+
+
+  void track_armor(autoaim_interfaces::msg::Armors armors) override;
 
   ExtendedKalmanFilter set_ekf(double dt);
 
   // 基于当前状态（目标命中时刻），用于预测dt秒后的目标状态，内部不处理选板逻辑
   Eigen::Matrix<double, 4, HORIZON> get_trajectory();
 
-  // 基于当前状态, 选择最合适的装甲板，返回装甲板的xyz坐标(四个标准位置选一个)
-  // std::vector<double> choose_aim_point(const Eigen::VectorXd& state);
-  std::vector<double> choose_aim_point(const Eigen::VectorXd& state);
 
   Eigen::Vector3d get_armor_position(const Eigen::VectorXd& state, int armor_index);
 

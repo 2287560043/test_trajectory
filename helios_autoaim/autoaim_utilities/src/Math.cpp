@@ -37,7 +37,7 @@ double get_rad(double a)
     return a;
 };
 
-double get_cost(const geometry_msgs::msg::Point& p) {
+double get_distance(const geometry_msgs::msg::Point& p) {
     return std::sqrt(p.x * p.x + p.y * p.y);
 };
 

@@ -247,7 +247,7 @@ void ArmorPredictorNode::get_marker_array(autoaim_interfaces::msg::Target target
   position_marker_.header = target.header;
   text_marker_.header = target.header;
 
-  double zc = target.position.z - target.dz / 2;
+  double zc = target.position.z + target.dz / 2;
 
   position_marker_.ns = "position";
   position_marker_.id = 0;
@@ -289,7 +289,7 @@ void ArmorPredictorNode::get_marker_array(autoaim_interfaces::msg::Target target
       
       if (a_n == 4) {
         r = is_current_pair ? r1 : r2;
-        p_a.z = z - (is_current_pair ? 0 : dz);
+        p_a.z = z + (is_current_pair ? 0 : dz);
         is_current_pair = !is_current_pair;
       } else {
         r = r1;
@@ -306,7 +306,8 @@ void ArmorPredictorNode::get_marker_array(autoaim_interfaces::msg::Target target
       q.setRPY(0, target.id == "outpost" ? -0.26 : 0.26, tmp_yaw);
       target_armor_marker_.pose.orientation = tf2::toMsg(q);
 
-      target_armor_marker_.scale.y = (target.armor_type == "SMALL") ? 0.135 : 0.23;
+      target_armor_marker_.scale.y = 0.135;
+      // target_armor_marker_.scale.y = (target.armor_type == "SMALL") ? 0.135 : 0.23;
 
       text_marker_.action = visualization_msgs::msg::Marker::ADD;
       text_marker_.id = i;
