@@ -77,6 +77,7 @@ protected:
 
   double yaw_vel_prev_;
   int target_armor_id_;
+  int last_armor_id_ = -1;
 
   // kalman utilities
   ExtendedKalmanFilter ekf_;

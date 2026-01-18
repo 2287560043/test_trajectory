@@ -212,85 +212,131 @@ Eigen::Vector3d StandardObserver::get_armor_position(const Eigen::VectorXd& stat
     );
 }
 
-// 返回选中的最优装甲板索引 (0-3)
+// // [add] 返回最优 armor_id (0-3)
+// int StandardObserver::select_best_armor_id(const Eigen::VectorXd& state, double fly_time)
+// {
+//     Eigen::VectorXd pred_state = state;
+//     pred_state(0) += state(1) * fly_time; 
+//     pred_state(2) += state(3) * fly_time; 
+//     pred_state(8) += state(9) * fly_time;
+    
+//     int best_id = -1;
+//     double min_swing_cost = 1e9;      // 枪口转动代价
+//     double min_wait_time = 1e9;       // 预瞄等待时间
+//     bool found_direct_aim = false;    // 是否找到正对的板
+
+//     double car_yaw = pred_state(8);
+//     double car_w = pred_state(9);
+
+//     double center_angle = std::atan2(pred_state(2), pred_state(0)); 
+
+//     RCLCPP_INFO(logger_, "");
+//     for (int i = 0; i < 4; i++) {
+//         // 当前装甲板的朝向角 (odoom frame)
+//         double armor_yaw = car_yaw + i * (M_PI / 2.0);
+//         armor_yaw = angles::normalize_angle(armor_yaw);
+
+//         // armor 朝向和 gimbal 朝向的角度差
+//         double orientation_diff = std::abs(angles::shortest_angular_distance(armor_yaw, center_angle));
+//         RCLCPP_INFO(logger_, "armor %d: armor_yaw:%f", i, armor_yaw);
+//         RCLCPP_INFO(logger_, "orientation_diff:%f", orientation_diff);
+        
+//         // 计算当前云台 Yaw 到该装甲板的 Swing Cost
+//         // 注意：这里需要粗略计算装甲板的方位角
+//         Eigen::Vector3d armor_pos = get_armor_position(pred_state, i);
+//         double armor_azimuth = std::atan2(armor_pos.y(), armor_pos.x());
+//         double swing_cost = std::abs(angles::shortest_angular_distance(gimbal_yaw_, armor_azimuth));
+
+//         if (orientation_diff < MAX_ORIENTATION_ANGLE) {
+//             // ---> Direct Aim (直接击打模式)
+//             // 找到一个正对的板，优先选择 Swing Cost 最小的
+//             if (!found_direct_aim || swing_cost < min_swing_cost) {
+//                 best_id = i;
+//                 min_swing_cost = swing_cost;
+//                 found_direct_aim = true;
+//             }
+//         } 
+//         else if (!found_direct_aim) {
+//             // ---> Indirect Aim (预瞄/阴枪模式)
+//             // 如果目前没有正对的板，寻找 "即将" 转过来的板
+//             // 计算转到正对位置需要转过的角度
+//             double angle_to_face = angles::shortest_angular_distance(armor_yaw, center_angle + M_PI);
+            
+//             // 只有当旋转方向正确时，这个板才会转过来
+//             // car_w > 0 (逆时针), 需要 angle_to_face > 0 吗？
+//             // shortest_angular_distance 返回的是 (target - current)
+//             // 如果 w > 0, 角度在增加。我们需要 target > current，即 diff > 0
+            
+//             if ((car_w > 0.1 && angle_to_face > 0) || (car_w < -0.1 && angle_to_face < 0)) {
+//                 double time_to_face = std::abs(angle_to_face / car_w);
+//                 if (time_to_face < min_wait_time) {
+//                     min_wait_time = time_to_face;
+//                     best_id = i;
+//                 }
+//             }
+//         }
+//     }
+
+//     if (best_id == -1) {
+//          return 0; // 或者保留上一次的 ID
+//     }
+
+//     return best_id;
+// }
+
+// [add] 返回最优的 armor_id (0-3)
 int StandardObserver::select_best_armor_id(const Eigen::VectorXd& state, double fly_time)
 {
-    Eigen::VectorXd pred_state = state;
-    pred_state(0) += state(1) * fly_time; 
-    pred_state(2) += state(3) * fly_time; 
-    pred_state(8) += state(9) * fly_time;
-    
+    double pred_x = state(0) + state(1) * fly_time;
+    double pred_y = state(2) + state(3) * fly_time;
+    double pred_yaw = state(8) + state(9) * fly_time;
+
+    double angle_enemy_to_camera = std::atan2(-pred_y, -pred_x);
+
     int best_id = -1;
-    double min_swing_cost = 1e9;      // 枪口转动代价
-    double min_wait_time = 1e9;       // 预瞄等待时间
-    bool found_direct_aim = false;    // 是否找到正对的板
+    double max_score = -1e9;
 
-    double car_yaw = pred_state(8);
-    double car_w = pred_state(9);
+    const double LOCK_BONUS = 0.3; // temp
 
-    // 车辆中心到相机的向量 (假设相机在原点 (0,0,0))
-    // ArmorNormal 理想情况下应该平行于 Camera->Center 向量（即正对相机）
-    // Camera->Center = (xc, yc)
-    double center_angle = std::atan2(pred_state(2), pred_state(0)); 
-
-    RCLCPP_INFO(logger_, "");
     for (int i = 0; i < 4; i++) {
-        // 当前装甲板的朝向角 (odoom frame)
-        double armor_yaw = car_yaw + i * (M_PI / 2.0);
+        // 计算预测时刻该装甲板的 Yaw
+        double armor_yaw = pred_yaw + i * (M_PI / 2.0);
         armor_yaw = angles::normalize_angle(armor_yaw);
 
-        // --- 评估 Criteria 1: Orientation (板是否朝向相机?) ---
-        // 理想的 armor_yaw 应该等于 center_angle + PI (即从中心指向相机)
-        // 或者简单理解：装甲板法线 与 向量(装甲板->相机) 的夹角
-        // 这里使用简化计算：判断 armor_yaw 与 center_angle 的关系
-        // 实际上 armor normal 是 (cos(yaw), sin(yaw)), cam vector 是 (-x, -y)
-        
-        // 真正的板朝向角误差
-        double orientation_diff = std::abs(angles::shortest_angular_distance(armor_yaw, center_angle));
-        RCLCPP_INFO(logger_, "armor %d: armor_yaw:%f", i, armor_yaw);
-        RCLCPP_INFO(logger_, "orientation_diff:%f", orientation_diff);
-        
-        // 计算当前云台 Yaw 到该装甲板的 Swing Cost
-        // 注意：这里需要粗略计算装甲板的方位角
-        Eigen::Vector3d armor_pos = get_armor_position(pred_state, i);
-        double armor_azimuth = std::atan2(armor_pos.y(), armor_pos.x());
-        double swing_cost = std::abs(angles::shortest_angular_distance(gimbal_yaw_, armor_azimuth));
+        // 计算 "Yaw Error" (偏离正对视角的程度)
+        // 对应 Jiaolong 代码中 "get_dis(d1.center, img_center)" 的几何投影版
+        double yaw_diff = std::abs(angles::shortest_angular_distance(angle_enemy_to_camera, armor_yaw));
 
-        if (orientation_diff < MAX_ORIENTATION_ANGLE) {
-            // ---> Direct Aim (直接击打模式)
-            // 找到一个正对的板，优先选择 Swing Cost 最小的
-            if (!found_direct_aim || swing_cost < min_swing_cost) {
-                best_id = i;
-                min_swing_cost = swing_cost;
-                found_direct_aim = true;
-            }
-        } 
-        else if (!found_direct_aim) {
-            // ---> Indirect Aim (预瞄/阴枪模式)
-            // 如果目前没有正对的板，寻找 "即将" 转过来的板
-            // 计算转到正对位置需要转过的角度
-            double angle_to_face = angles::shortest_angular_distance(armor_yaw, center_angle + M_PI);
-            
-            // 只有当旋转方向正确时，这个板才会转过来
-            // car_w > 0 (逆时针), 需要 angle_to_face > 0 吗？
-            // shortest_angular_distance 返回的是 (target - current)
-            // 如果 w > 0, 角度在增加。我们需要 target > current，即 diff > 0
-            
-            if ((car_w > 0.1 && angle_to_face > 0) || (car_w < -0.1 && angle_to_face < 0)) {
-                double time_to_face = std::abs(angle_to_face / car_w);
-                if (time_to_face < min_wait_time) {
-                    min_wait_time = time_to_face;
-                    best_id = i;
-                }
-            }
+        // 如果偏角过大 (比如超过 60 度)，认为视觉上不可见或容易跳弹，直接跳过
+        if (yaw_diff > (60.0 * M_PI / 180.0)) {
+            continue;
+        }
+
+        // --- 核心评分逻辑 ---
+        // 使用 cos(diff) 作为基础分：
+        // diff = 0 (正对) -> score = 1
+        // diff = 60 (边缘) -> score = 0.5
+        double score = std::cos(yaw_diff);
+
+        // --- 复现 Jiaolong 的 TargetCatcher 锁定逻辑 ---
+        // 如果这个板子是上一次选中的 (last_armor_id_)，且它现在还是可见的 (即代码没continue)
+        // 那么强行加分，使得除非另一块板优势巨大，否则不切换。
+        if (i == last_armor_id_) {
+            score += LOCK_BONUS;
+        }
+
+        // 更新最优解
+        if (score > max_score) {
+            max_score = score;
+            best_id = i;
         }
     }
 
-    if (best_id == -1) {
-         return 0; // 或者保留上一次的 ID
+    if (best_id != -1) {
+        last_armor_id_ = best_id; 
+        return best_id;
     }
-
-    return best_id;
+    return (last_armor_id_ != -1) ? last_armor_id_ : 0;
 }
 
 // [重构] 轨迹生成函数
