@@ -428,29 +428,53 @@ void AutoAimDebugger::caculate_target(autoaim_interfaces::msg::Target::SharedPtr
   {
     target_pose_ros_.clear();
     
+    // ==========================================
+    // 1. 定义装甲板 3D 顶点 (透视变换的基础)
+    // ==========================================
+    // 重点：在 ROS Body Frame (X前 Y左 Z上) 中，
+    // 我们定义板子面朝 X 轴，所以顶点分布在 Y-Z 平面上 (x=0)。
+    
+    // 简单判断大小装甲板 (英雄 1 是大装甲，其他默认为小)
+    bool is_large = (target_msg->id == "1"); 
+    double w = is_large ? 0.23 : 0.135; // 宽: 大230mm, 小135mm
+    double h = 0.055;                   // 高: 55mm
+    
+    // 逆时针定义四个角点: 左上 -> 左下 -> 右下 -> 右上
+    std::vector<cv::Point3f> object_points;
+    object_points.emplace_back(0,  w/2,  h/2);
+    object_points.emplace_back(0,  w/2, -h/2);
+    object_points.emplace_back(0, -w/2, -h/2);
+    object_points.emplace_back(0, -w/2,  h/2);
+
+    // ==========================================
+    // 2. 构建位姿与旋转
+    // ==========================================
     geometry_msgs::msg::Pose pose;
-    // 预测出的击打位置 (odoom frame)
     pose.position = target_msg->position; 
 
     tf2::Quaternion q;
-    // 固定15度倾角
+    // 恢复 15 度倾角 (约 0.26 rad)
+    // 规则：Yaw 决定朝向，Pitch 决定倾斜。
+    // tf2 setRPY(r, p, y) 对应 Fixed Axis Z-Y-X 旋转，
+    // 即先 Yaw(Z) 转到朝向，再 Pitch(Y) 仰起，符合物理直觉。
     double pitch = (target_msg->id == "outpost") ? -0.26 : 0.26; 
     
     q.setRPY(0, pitch, target_msg->yaw);
     pose.orientation = tf2::toMsg(q);
 
-    try
-    {
+    // 转换到相机坐标系
+    try {
       tf2::doTransform(pose, pose, cam2odom_);
-    }
-    catch (tf2::TransformException& e)
-    {
+    } catch (tf2::TransformException& e) {
       RCLCPP_WARN(rclcpp::get_logger("AutoAimDebugger"), "Transform Error: %s", e.what());
       return;
     }
 
     target_pose_ros_.emplace_back(pose);
 
+    // ==========================================
+    // 3. 投影 (3D -> 2D)
+    // ==========================================
     auto& target_pose = target_pose_ros_[0];
 
     cv::Mat tvec = (cv::Mat_<double>(3, 1) << target_pose.position.x, 
@@ -460,11 +484,13 @@ void AutoAimDebugger::caculate_target(autoaim_interfaces::msg::Target::SharedPtr
     cv::Quatd q_eigen(target_pose.orientation.w, target_pose.orientation.x, 
                       target_pose.orientation.y, target_pose.orientation.z);
     
+    // 剔除相机后方的点
     if (tvec.at<double>(2) <= 0.1) return;
 
     std::vector<cv::Point2f> image_points;
 
-    cv::projectPoints(armor_object_points_, q_eigen.toRotMat3x3(), tvec, 
+    // 使用刚才定义的 object_points 进行投影，这样画出来的框才有透视感
+    cv::projectPoints(object_points, q_eigen.toRotMat3x3(), tvec, 
                       camera_matrix_, distortion_coefficients_, image_points);
 
     std::vector<cv::Point3f> center_3d = {cv::Point3f(0, 0, 0)};
@@ -472,10 +498,12 @@ void AutoAimDebugger::caculate_target(autoaim_interfaces::msg::Target::SharedPtr
     cv::projectPoints(center_3d, q_eigen.toRotMat3x3(), tvec, 
                       camera_matrix_, distortion_coefficients_, center_2d);
 
-    
-    // 红色框代表击打位置
+    // ==========================================
+    // 4. 绘制 (保持原逻辑)
+    // ==========================================
     cv::Scalar hit_color = cv::Scalar(0, 0, 255);
     
+    // 画出装甲板的四边形 (现在是平行四边形/梯形了)
     for (size_t j = 0; j < image_points.size(); j++)
     {
       cv::line(raw_image_, image_points[j], image_points[(j + 1) % image_points.size()], 
@@ -493,13 +521,17 @@ void AutoAimDebugger::caculate_target(autoaim_interfaces::msg::Target::SharedPtr
                                 target_msg->position.z * target_msg->position.z);
         
         std::string info_text = "Dist: " + std::to_string(dist).substr(0, 4) + "m";
-        cv::putText(raw_image_, info_text, c + cv::Point2f(150, -120), 
+        cv::putText(raw_image_, info_text, cv::Point2f(150, 210), 
                     cv::FONT_HERSHEY_SIMPLEX, 1.2, hit_color, 2);
         
         if (!target_msg->id.empty()) {
-            cv::putText(raw_image_, "ID: " + target_msg->id, c + cv::Point2f(150, -60), 
+            cv::putText(raw_image_, "ID: " + target_msg->id, cv::Point2f(150, 150), 
                         cv::FONT_HERSHEY_SIMPLEX, 1.2, hit_color, 2);
         }
+        cv::putText(raw_image_, "Yaw: " + std::to_string(target_msg->yaw).substr(0, 4), cv::Point2f(150, 90), 
+                    cv::FONT_HERSHEY_SIMPLEX, 1.2, hit_color, 2);
+        cv::putText(raw_image_, "Vel_yaw: " + std::to_string(target_msg->v_yaw).substr(0, 4), cv::Point2f(150, 30), 
+                    cv::FONT_HERSHEY_SIMPLEX, 1.2, hit_color, 2);
     }
   }
 }
