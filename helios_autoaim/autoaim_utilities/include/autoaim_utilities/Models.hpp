@@ -1,5 +1,5 @@
 #pragma once
-#include <autoaim_utilities/AdaptiveEkf.hpp>
+#include <autoaim_utilities/AdaptiveEKF.hpp>
 #include <cmath>
 
 namespace helios_cv {
