@@ -1,18 +1,17 @@
 // rebuild on 2026/01/19
-// 放弃了整车预测，转而对每个 armor 建立单独的 ArmorTracker
+// 放弃了整车估计
+// 转而对每个 armor 配置一个 tracker
 #pragma once
 
 #include "BaseObserver.hpp"
-#include "autoaim_utilities/Models.hpp"
+#include "autoaim_utilities/AntiSpinEKF.hpp"
 
-// #include <autoaim_interfaces/msg/detail/armors__struct.hpp>
-
+#include <map>
+#include <string>
 
 namespace helios_cv
 {
-const double SWITCH_LOCK_DT = 1.0;         // 锁定时间(秒),xx秒内禁止因距离优势切换目标
-const double MAX_ORIENTATION_ANGLE = M_PI_2;
-const double LOST_TIME_THRESH = 0.2;       // 丢失时间阈值(秒),超过此时间未检测到装甲板则认为丢失
+const double LOST_TIME_THRESH = 0.5;
 
 // [temp] 暂时为了兼容接口，后续会重写
 typedef struct StandardObserverParams : public BaseObserverParams
@@ -43,18 +42,25 @@ typedef struct StandardObserverParams : public BaseObserverParams
 
 
 struct ArmorTracker {
-    ArmorEkf ekf;
+    AntiSpinEKF ekf; 
     double last_timestamp;
     bool is_active;
     
-    void init(const Eigen::Vector3d& xyz, double t) {
-        ArmorEkf::MatrixX1 x0;
-        // 初始化位置为观测值，速度为0
-        //    x       vx  y       vy  z       vz
-        x0 << xyz(0), 0,  xyz(1), 0,  xyz(2), 0;
+    void init(const Eigen::Vector3d& xyz_armor, double yaw_armor, double t) {
+        double r0 = 0.20;
+
+        // 反推车体中心
+        double xc = xyz_armor.x() - r0 * std::cos(yaw_armor);
+        double yc = xyz_armor.y() - r0 * std::sin(yaw_armor);
+
+        Eigen::Matrix<double, 9, 1> x0;
+        x0.setZero();
+        // [xc, vxc, yc, vyc, za, vza, yaw, v_yaw, r]
+        x0 << xc, 0, yc, 0, xyz_armor.z(), 0, yaw_armor, 0, r0;
         
-        ArmorEkf::MatrixXX P0 = ArmorEkf::MatrixXX::Identity();
-        P0.diagonal() << 0.1, 10, 0.1, 10, 0.1, 10;
+        Eigen::Matrix<double, 9, 9> P0 = Eigen::Matrix<double, 9, 9>::Identity();
+        // 初始协方差
+        P0.diagonal() << 10, 10, 10, 10, 1, 10, 0.1, 100, 0.1;
         
         ekf.init(x0, P0);
         last_timestamp = t;
@@ -69,28 +75,15 @@ public:
     StandardObserver() = default;
     ~StandardObserver() = default;
 
-    // [temp] 暂时为了兼容接口，后续会重写
-    autoaim_interfaces::msg::Target predict_target(autoaim_interfaces::msg::Armors armors, double dt, double yaw, double bullet_speed) override;
+    autoaim_interfaces::msg::Target predict_target(autoaim_interfaces::msg::Armors armors, double dt, double gimbal_yaw, double bullet_speed) override;
     
     void reset_kalman() override;
-
-    void track_armor(autoaim_interfaces::msg::Armors armors) override {
-        return;
-    };
-
-    void set_params(void* params) override {
-        return;
-    }
-    // [temp] 暂时为了兼容接口，后续会重写
-
+    void track_armor(autoaim_interfaces::msg::Armors armors) override {return;};
+    void set_params(void* params) override {return;};
 
 protected:
-    // Armor Number (string, e.g., "1", "2", "outpost")
     std::map<std::string, ArmorTracker> trackers_map_;
-
     void update_trackers(const autoaim_interfaces::msg::Armors& armors, double current_time);
-  
-    // 返回最佳目标的 number
     std::string select_best_target();
     
     double current_time_;
@@ -98,8 +91,6 @@ protected:
     // [temp] 暂时为了兼容接口，后续会重写
     std::map<int, int> armor_match_;
     ExtendedKalmanFilter ekf_;
-
-private:
     StandardObserverParams params_;
     rclcpp::Logger logger_ = rclcpp::get_logger("StandardObserver");
 };
