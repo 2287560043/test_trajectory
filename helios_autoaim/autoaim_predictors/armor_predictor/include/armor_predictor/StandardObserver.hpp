@@ -1,9 +1,9 @@
-// created by liuhan, Yechenyuzhu on 2024/1/16
-// Submodule of HeliosRobotSystem
-// for more see document: https://swjtuhelios.feishu.cn/docx/MfCsdfRxkoYk3oxWaazcfUpTnih?from=from_copylink
+// rebuild on 2026/01/19
+// 放弃了整车预测，转而对每个 armor 建立单独的 ArmorTracker
 #pragma once
 
 #include "BaseObserver.hpp"
+#include "Models.hpp"
 
 // #include <autoaim_interfaces/msg/detail/armors__struct.hpp>
 
@@ -12,7 +12,9 @@ namespace helios_cv
 {
 const double SWITCH_LOCK_DT = 1.0;         // 锁定时间(秒),xx秒内禁止因距离优势切换目标
 const double MAX_ORIENTATION_ANGLE = M_PI_2;
+const double LOST_TIME_THRESH = 0.2;       // 丢失时间阈值(秒),超过此时间未检测到装甲板则认为丢失
 
+// [temp] 暂时为了兼容接口，后续会重写
 typedef struct StandardObserverParams : public BaseObserverParams
 {
   typedef struct DDMParams
@@ -40,60 +42,66 @@ typedef struct StandardObserverParams : public BaseObserverParams
 } StandardObserverParams;
 
 
+struct ArmorTracker {
+    ArmorEkf ekf;
+    double last_timestamp;
+    bool is_active;
+    
+    void init(const Eigen::Vector3d& xyz, double t) {
+        ArmorEkf::MatrixX1 x0;
+        // 初始化位置为观测值，速度为0
+        //    x       vx  y       vy  z       vz
+        x0 << xyz(0), 0,  xyz(1), 0,  xyz(2), 0;
+        
+        ArmorEkf::MatrixXX P0 = ArmorEkf::MatrixXX::Identity();
+        P0.diagonal() << 0.1, 10, 0.1, 10, 0.1, 10;
+        
+        ekf.init(x0, P0);
+        last_timestamp = t;
+        is_active = true;
+    }
+};
 
 class StandardObserver : public BaseObserver
 {
 public:
-  StandardObserver(const StandardObserverParams& params);
+    StandardObserver(const StandardObserverParams& params);
+    StandardObserver() = default;
+    ~StandardObserver() = default;
 
-  autoaim_interfaces::msg::Target predict_target(autoaim_interfaces::msg::Armors armors, double dt, double yaw, double bullet_speed) override;
+    // [temp] 暂时为了兼容接口，后续会重写
+    autoaim_interfaces::msg::Target predict_target(autoaim_interfaces::msg::Armors armors, double dt, double yaw, double bullet_speed) override;
+    
+    void reset_kalman() override;
 
-  void update_state_machine(bool matched);
+    void track_armor(autoaim_interfaces::msg::Armors armors) override {
+        return;
+    };
 
-  void reset_kalman() override;
+    void set_params(void* params) override {
+        return;
+    }
+    // [temp] 暂时为了兼容接口，后续会重写
 
-  void set_params(void* params) override;
-
-  // Trajectory get_trajectory(double yaw0, double bullet_speed);
-  
-  void track_armor(autoaim_interfaces::msg::Armor armor);
 
 protected:
-  StandardObserver() = default;
+    // Armor Number (string, e.g., "1", "2", "outpost")
+    std::map<std::string, ArmorTracker> trackers_map_;
 
+    void update_trackers(const autoaim_interfaces::msg::Armors& armors, double current_time);
+  
+    // 返回最佳目标的 number
+    std::string select_best_target();
+    
+    double current_time_;
 
-
-  void track_armor(autoaim_interfaces::msg::Armors armors) override;
-
-  ExtendedKalmanFilter set_ekf(double dt);
-
-  // 基于当前状态（目标命中时刻），用于预测dt秒后的目标状态，内部不处理选板逻辑
-  Eigen::Matrix<double, 4, HORIZON> get_trajectory();
-
-
-  Eigen::Vector3d get_armor_position(const Eigen::VectorXd& state, int armor_index);
-
-  int select_best_armor_id(const Eigen::VectorXd& state, double fly_time);
-
-  double yaw_vel_prev_;
-  int target_armor_id_;
-  int last_armor_id_ = -1;
-
-  // kalman utilities
-  ExtendedKalmanFilter ekf_;
-  ExtendedKalmanFilter update_ekf_;
-  std::map<int, int> armor_match_;
-  double bullet_speed_;
-  double gimbal_yaw_;
-  double yaw0_;
-
-  rclcpp::Time last_switch_time_;             
+    // [temp] 暂时为了兼容接口，后续会重写
+    std::map<int, int> armor_match_;
+    ExtendedKalmanFilter ekf_;
 
 private:
-  // Params
-  StandardObserverParams params_;
-  // Logger
-  rclcpp::Logger logger_ = rclcpp::get_logger("StandardObserver");
+    StandardObserverParams params_;
+    rclcpp::Logger logger_ = rclcpp::get_logger("StandardObserver");
 };
 
-}  // namespace helios_cv
+} // namespace helios_cv

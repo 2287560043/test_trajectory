@@ -427,120 +427,79 @@ void AutoAimDebugger::caculate_target(autoaim_interfaces::msg::Target::SharedPtr
   if (target_msg->tracking)
   {
     target_pose_ros_.clear();
-    target_rvecs_.clear();
-    target_tvecs_.clear();
-
-    size_t armors_num = target_msg->armors_num;
     
-    if (armors_num >= 2 && armors_num <= 4)
-    {
-      double yaw = target_msg->yaw;
-      double r1 = target_msg->radius_1; 
-      double r2 = target_msg->radius_2;
-      double xc = target_msg->position.x;
-      double yc = target_msg->position.y;
-      double zc = target_msg->position.z;
-      double dz = target_msg->dz;
+    geometry_msgs::msg::Pose pose;
+    // 预测出的击打位置 (odoom frame)
+    pose.position = target_msg->position; 
 
-      bool is_current_pair = true;
-      double r = 0;
-      double z_offset = 0;
-
-      for (size_t i = 0; i < armors_num; i++)
-      {
-        double tmp_yaw = yaw + i * (2 * M_PI / armors_num);
-        
-        if (armors_num == 4)
-        {
-          r = is_current_pair ? r1 : r2;
-          z_offset = is_current_pair ? 0 : dz;
-          is_current_pair = !is_current_pair;
-        }
-        else
-        {
-          r = r1;
-          z_offset = 0;
-        }
-
-        geometry_msgs::msg::Point p_a;
-        p_a.x = xc - r * std::cos(tmp_yaw);
-        p_a.y = yc - r * std::sin(tmp_yaw);
-        p_a.z = zc + z_offset;
-
-        geometry_msgs::msg::Pose pose;
-        pose.position = p_a;
-        tf2::Quaternion q;
-        q.setRPY(0, target_msg->id == "outpost" ? -0.26 : 0.26, tmp_yaw);
-        pose.orientation = tf2::toMsg(q);
-
-        target_pose_ros_.emplace_back(pose);
-      }
-    }
-    else if (target_msg->armors_num == 1)
-    {
-       geometry_msgs::msg::Pose pose;
-       tf2::Quaternion tf_q;
-       tf_q.setRPY(0, target_msg->id == "outpost" ? -0.26 : 0.26, 0);
-       pose.orientation = tf2::toMsg(tf_q);
-       pose.position = target_msg->position;
-       target_pose_ros_.emplace_back(pose);
-    }
+    tf2::Quaternion q;
+    // 固定15度倾角
+    double pitch = (target_msg->id == "outpost") ? -0.26 : 0.26; 
+    
+    q.setRPY(0, pitch, target_msg->yaw);
+    pose.orientation = tf2::toMsg(q);
 
     try
     {
-      for (auto& pose : target_pose_ros_)
-      {
-        tf2::doTransform(pose, pose, cam2odom_);
-      }
+      tf2::doTransform(pose, pose, cam2odom_);
     }
     catch (tf2::TransformException& e)
     {
+      RCLCPP_WARN(rclcpp::get_logger("AutoAimDebugger"), "Transform Error: %s", e.what());
       return;
     }
 
-    int best_target_idx = target_msg->armor_id;
-    if (target_msg->armors_num == 1) best_target_idx = 0;
+    target_pose_ros_.emplace_back(pose);
 
-    for (size_t i = 0; i < target_pose_ros_.size(); i++)
+    auto& target_pose = target_pose_ros_[0];
+
+    cv::Mat tvec = (cv::Mat_<double>(3, 1) << target_pose.position.x, 
+                                             target_pose.position.y, 
+                                             target_pose.position.z);
+    
+    cv::Quatd q_eigen(target_pose.orientation.w, target_pose.orientation.x, 
+                      target_pose.orientation.y, target_pose.orientation.z);
+    
+    if (tvec.at<double>(2) <= 0.1) return;
+
+    std::vector<cv::Point2f> image_points;
+
+    cv::projectPoints(armor_object_points_, q_eigen.toRotMat3x3(), tvec, 
+                      camera_matrix_, distortion_coefficients_, image_points);
+
+    std::vector<cv::Point3f> center_3d = {cv::Point3f(0, 0, 0)};
+    std::vector<cv::Point2f> center_2d;
+    cv::projectPoints(center_3d, q_eigen.toRotMat3x3(), tvec, 
+                      camera_matrix_, distortion_coefficients_, center_2d);
+
+    
+    // 红色框代表击打位置
+    cv::Scalar hit_color = cv::Scalar(0, 0, 255);
+    
+    for (size_t j = 0; j < image_points.size(); j++)
     {
-      cv::Mat tvec = (cv::Mat_<double>(3, 1) << target_pose_ros_[i].position.x, 
-                                               target_pose_ros_[i].position.y, 
-                                               target_pose_ros_[i].position.z);
-      cv::Quatd q(target_pose_ros_[i].orientation.w, target_pose_ros_[i].orientation.x, 
-                  target_pose_ros_[i].orientation.y, target_pose_ros_[i].orientation.z);
-      
-      if (tvec.at<double>(2) <= 0) continue;
+      cv::line(raw_image_, image_points[j], image_points[(j + 1) % image_points.size()], 
+               hit_color, 4);
+    }
 
-      std::vector<cv::Point2f> image_points;
-      cv::projectPoints(armor_object_points_, q.toRotMat3x3(), tvec, 
-                        camera_matrix_, distortion_coefficients_, image_points);
+    if (!center_2d.empty()) {
+        cv::Point2f c = center_2d[0];
+        cv::line(raw_image_, c - cv::Point2f(10, 0), c + cv::Point2f(10, 0), hit_color, 4);
+        cv::line(raw_image_, c - cv::Point2f(0, 10), c + cv::Point2f(0, 10), hit_color, 4);
+        cv::circle(raw_image_, c, 5, hit_color, 2);
 
-      bool is_hit_target = ((int)i == best_target_idx);
-      cv::Scalar line_color = is_hit_target ? cv::Scalar(0, 0, 255) : cv::Scalar(0, 255, 255); 
-
-      for (size_t j = 0; j < image_points.size(); j++)
-      {
-        cv::line(raw_image_, image_points[j], image_points[(j + 1) % image_points.size()], 
-                 line_color, 4);
-      }
-      
-      if (!image_points.empty()) {
-          cv::Point2f corner_tr = image_points[2];
-          
-          cv::putText(raw_image_, std::to_string(i), corner_tr + cv::Point2f(5, -5), 
-                      cv::FONT_HERSHEY_SIMPLEX, 1.0, line_color, 3);
-
-          std::vector<cv::Point3f> center_3d = {cv::Point3f(0,0,0)};
-          std::vector<cv::Point2f> center_2d_vec;
-          cv::projectPoints(center_3d, q.toRotMat3x3(), tvec, camera_matrix_, distortion_coefficients_, center_2d_vec);
-          if(!center_2d_vec.empty()) {
-             cv::circle(raw_image_, center_2d_vec[0], 2, line_color, -1);
-             if (is_hit_target) {
-                 cv::putText(raw_image_, "HIT", center_2d_vec[0] + cv::Point2f(0, 20), 
-                             cv::FONT_HERSHEY_SIMPLEX, 1.0, cv::Scalar(0, 0, 255), 3);
-             }
-          }
-      }
+        double dist = std::sqrt(target_msg->position.x * target_msg->position.x + 
+                                target_msg->position.y * target_msg->position.y + 
+                                target_msg->position.z * target_msg->position.z);
+        
+        std::string info_text = "Dist: " + std::to_string(dist).substr(0, 4) + "m";
+        cv::putText(raw_image_, info_text, c + cv::Point2f(150, -120), 
+                    cv::FONT_HERSHEY_SIMPLEX, 1.2, hit_color, 2);
+        
+        if (!target_msg->id.empty()) {
+            cv::putText(raw_image_, "ID: " + target_msg->id, c + cv::Point2f(150, -60), 
+                        cv::FONT_HERSHEY_SIMPLEX, 1.2, hit_color, 2);
+        }
     }
   }
 }
