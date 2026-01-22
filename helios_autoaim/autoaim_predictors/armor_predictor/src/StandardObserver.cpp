@@ -32,6 +32,8 @@ Eigen::Vector4d get_observation(const geometry_msgs::msg::Pose& pose) {
     double yaw_pos = std::atan2(pos.y(), pos.x());
     double pitch_pos = std::atan2(pos.z(), d_xy);
 
+    yaw_orient = angles::normalize_angle(yaw_orient + M_PI);
+
     return Eigen::Vector4d(yaw_pos, pitch_pos, d, yaw_orient);
 }
 

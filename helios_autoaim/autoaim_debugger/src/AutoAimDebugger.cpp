@@ -426,20 +426,16 @@ void AutoAimDebugger::caculate_target(autoaim_interfaces::msg::Target::SharedPtr
 {
   if (target_msg->tracking)
   {
-    target_pose_ros_.clear();
-    
+    target_pose_ros_.clear(); // 清空旧的位姿缓存
+
     // ==========================================
     // 1. 定义装甲板 3D 顶点 (透视变换的基础)
     // ==========================================
-    // 重点：在 ROS Body Frame (X前 Y左 Z上) 中，
-    // 我们定义板子面朝 X 轴，所以顶点分布在 Y-Z 平面上 (x=0)。
+    bool is_large = (target_msg->id == "1"); // 英雄为大装甲
+    double w = is_large ? 0.23 : 0.135;      // 宽: 大230mm, 小135mm
+    double h = 0.055;                        // 高: 55mm
     
-    // 简单判断大小装甲板 (英雄 1 是大装甲，其他默认为小)
-    bool is_large = (target_msg->id == "1"); 
-    double w = is_large ? 0.23 : 0.135; // 宽: 大230mm, 小135mm
-    double h = 0.055;                   // 高: 55mm
-    
-    // 逆时针定义四个角点: 左上 -> 左下 -> 右下 -> 右上
+    // 逆时针定义四个角点 (相对于装甲板中心)
     std::vector<cv::Point3f> object_points;
     object_points.emplace_back(0,  w/2,  h/2);
     object_points.emplace_back(0,  w/2, -h/2);
@@ -447,91 +443,124 @@ void AutoAimDebugger::caculate_target(autoaim_interfaces::msg::Target::SharedPtr
     object_points.emplace_back(0, -w/2,  h/2);
 
     // ==========================================
-    // 2. 构建位姿与旋转
+    // 2. 获取几何参数 (半径与数量)
     // ==========================================
-    geometry_msgs::msg::Pose pose;
-    pose.position = target_msg->position; 
-
-    tf2::Quaternion q;
-    // 恢复 15 度倾角 (约 0.26 rad)
-    // 规则：Yaw 决定朝向，Pitch 决定倾斜。
-    // tf2 setRPY(r, p, y) 对应 Fixed Axis Z-Y-X 旋转，
-    // 即先 Yaw(Z) 转到朝向，再 Pitch(Y) 仰起，符合物理直觉。
-    double pitch = (target_msg->id == "outpost") ? -0.26 : 0.26; 
+    // 优先使用消息中的半径，如果没有则给定默认值
+    int armor_num = 4;
+    double r1 = target_msg->radius_1; 
+    double r2 = target_msg->radius_2;
+    double dz = target_msg->dz;
     
-    q.setRPY(0, pitch, target_msg->yaw);
-    pose.orientation = tf2::toMsg(q);
-
-    // 转换到相机坐标系
-    try {
-      tf2::doTransform(pose, pose, cam2odom_);
-    } catch (tf2::TransformException& e) {
-      RCLCPP_WARN(rclcpp::get_logger("AutoAimDebugger"), "Transform Error: %s", e.what());
-      return;
-    }
-
-    target_pose_ros_.emplace_back(pose);
+    // 鲁棒性保护：防止半径为0导致计算错误
+    // 默认半径: 英雄/步兵约 0.2~0.25m
+    if (r1 < 0.05) r1 = is_large ? 0.23 : 0.20; 
+    if (r2 < 0.05) r2 = r1;
 
     // ==========================================
-    // 3. 投影 (3D -> 2D)
+    // 3. 循环计算所有装甲板位姿
     // ==========================================
-    auto& target_pose = target_pose_ros_[0];
-
-    cv::Mat tvec = (cv::Mat_<double>(3, 1) << target_pose.position.x, 
-                                             target_pose.position.y, 
-                                             target_pose.position.z);
-    
-    cv::Quatd q_eigen(target_pose.orientation.w, target_pose.orientation.x, 
-                      target_pose.orientation.y, target_pose.orientation.z);
-    
-    // 剔除相机后方的点
-    if (tvec.at<double>(2) <= 0.1) return;
-
-    std::vector<cv::Point2f> image_points;
-
-    // 使用刚才定义的 object_points 进行投影，这样画出来的框才有透视感
-    cv::projectPoints(object_points, q_eigen.toRotMat3x3(), tvec, 
-                      camera_matrix_, distortion_coefficients_, image_points);
-
-    std::vector<cv::Point3f> center_3d = {cv::Point3f(0, 0, 0)};
-    std::vector<cv::Point2f> center_2d;
-    cv::projectPoints(center_3d, q_eigen.toRotMat3x3(), tvec, 
-                      camera_matrix_, distortion_coefficients_, center_2d);
-
-    // ==========================================
-    // 4. 绘制 (保持原逻辑)
-    // ==========================================
-    cv::Scalar hit_color = cv::Scalar(0, 0, 255);
-    
-    // 画出装甲板的四边形 (现在是平行四边形/梯形了)
-    for (size_t j = 0; j < image_points.size(); j++)
+    // 假设: i=0 是当前追踪的目标装甲板 (hit point)
+    for (int i = 0; i < armor_num; i++)
     {
-      cv::line(raw_image_, image_points[j], image_points[(j + 1) % image_points.size()], 
-               hit_color, 4);
-    }
-
-    if (!center_2d.empty()) {
-        cv::Point2f c = center_2d[0];
-        cv::line(raw_image_, c - cv::Point2f(10, 0), c + cv::Point2f(10, 0), hit_color, 4);
-        cv::line(raw_image_, c - cv::Point2f(0, 10), c + cv::Point2f(0, 10), hit_color, 4);
-        cv::circle(raw_image_, c, 5, hit_color, 2);
-
-        double dist = std::sqrt(target_msg->position.x * target_msg->position.x + 
-                                target_msg->position.y * target_msg->position.y + 
-                                target_msg->position.z * target_msg->position.z);
+        // --------------------------------------
+        // A. 计算当前装甲板的 Yaw 和 半径
+        // --------------------------------------
+        double yaw_offset = i * (2.0 * M_PI / armor_num); // 0, 90, 180, 270
+        double armor_yaw = target_msg->yaw + yaw_offset;
         
-        std::string info_text = "Dist: " + std::to_string(dist).substr(0, 4) + "m";
-        cv::putText(raw_image_, info_text, cv::Point2f(150, 210), 
-                    cv::FONT_HERSHEY_SIMPLEX, 1.2, hit_color, 2);
-        
-        if (!target_msg->id.empty()) {
-            cv::putText(raw_image_, "ID: " + target_msg->id, cv::Point2f(150, 150), 
-                        cv::FONT_HERSHEY_SIMPLEX, 1.2, hit_color, 2);
+        // 确定当前板子的半径 (标准步兵/英雄通常是长短轴交替)
+        // 假设追踪的是长轴(r1)，则 0,2用r1; 1,3用r2
+        double r = r1;
+        if (armor_num == 4 && (i % 2 != 0)) {
+            r = r2;
         }
-        cv::putText(raw_image_, "Yaw: " + std::to_string(target_msg->yaw).substr(0, 4), cv::Point2f(150, 90), 
-                    cv::FONT_HERSHEY_SIMPLEX, 1.2, hit_color, 2);
-        cv::putText(raw_image_, "Vel_yaw: " + std::to_string(target_msg->v_yaw).substr(0, 4), cv::Point2f(150, 30), 
-                    cv::FONT_HERSHEY_SIMPLEX, 1.2, hit_color, 2);
+
+        // --------------------------------------
+        // B. 构建世界坐标系下的位姿 (Pose in World/Odom)
+        // --------------------------------------
+        // 核心逻辑：先求 Robot Center，再推算其他板子
+        // Robot Center = Target_Pos - R_target * vec(Target_Yaw)
+        // 注意：计算中心时必须使用追踪板的半径(即r1)
+        double cx = target_msg->position.x - r1 * cos(target_msg->yaw);
+        double cy = target_msg->position.y - r1 * sin(target_msg->yaw);
+        double cz = target_msg->position.z; // 假设中心高度与装甲板一致
+
+        geometry_msgs::msg::Pose pose;
+        
+        // Armor_Pos = Center + R_current * vec(Armor_Yaw)
+        pose.position.x = cx + r * cos(armor_yaw);
+        pose.position.y = cy + r * sin(armor_yaw);
+        pose.position.z = cz + ((i == 0) ? 0 : dz); // 仅在需要时应用dz(如平衡步兵)
+
+        // 姿态四元数：包含装甲板倾角 (Pitch) 和朝向 (Yaw)
+        double pitch = -0.26;
+        tf2::Quaternion q;
+        q.setRPY(0, pitch, armor_yaw); 
+        pose.orientation = tf2::toMsg(q);
+
+        // --------------------------------------
+        // C. 坐标变换 (World -> Camera)
+        // --------------------------------------
+        // 注意：cam2odom_ 通常是从 Camera 到 Odom 的变换
+        // 这里需要将 Odom 下的 pose 变换到 Camera 系
+        // tf2::doTransform 会自动处理逆变换逻辑（前提是 Transformer 正确配置）
+        geometry_msgs::msg::Pose cam_pose;
+        try {
+            tf2::doTransform(pose, cam_pose, cam2odom_);
+        } catch (tf2::TransformException& e) {
+            continue; // TF 失败则跳过
+        }
+        
+        target_pose_ros_.emplace_back(cam_pose); // 存入列表供后续可能的发布使用
+
+        // ==========================================
+        // 4. 投影与绘制 (3D -> 2D)
+        // ==========================================
+        cv::Mat tvec = (cv::Mat_<double>(3, 1) << cam_pose.position.x, 
+                                                 cam_pose.position.y, 
+                                                 cam_pose.position.z);
+        
+        // 剔除相机后方的点 (Z < 0.1m)
+        if (tvec.at<double>(2) <= 0.1) continue;
+
+        cv::Quatd q_eigen(cam_pose.orientation.w, cam_pose.orientation.x, 
+                          cam_pose.orientation.y, cam_pose.orientation.z);
+        
+        std::vector<cv::Point2f> image_points;
+        cv::projectPoints(object_points, q_eigen.toRotMat3x3(), tvec, 
+                          camera_matrix_, distortion_coefficients_, image_points);
+
+        // --------------------------------------
+        // D. 绘制逻辑 (区分颜色)
+        // --------------------------------------
+        // 追踪目标(i=0)用红色粗线，推算出的其他板子用紫色细线
+        cv::Scalar line_color = (i == 0) ? cv::Scalar(0, 0, 255) : cv::Scalar(255, 0, 255);
+        int thickness = (i == 0) ? 4 : 2;
+
+        for (size_t j = 0; j < image_points.size(); j++) {
+            cv::line(raw_image_, image_points[j], image_points[(j + 1) % 4], 
+                     line_color, thickness);
+        }
+
+        // 仅在追踪目标上绘制中心点和文字
+        if (i == 0) {
+            std::vector<cv::Point3f> center_3d = {cv::Point3f(0, 0, 0)};
+            std::vector<cv::Point2f> center_2d;
+            cv::projectPoints(center_3d, q_eigen.toRotMat3x3(), tvec, 
+                              camera_matrix_, distortion_coefficients_, center_2d);
+            
+            if (!center_2d.empty()) {
+                cv::circle(raw_image_, center_2d[0], 5, cv::Scalar(0, 255, 0), -1);
+                
+                // 绘制距离信息
+                double dist = std::sqrt(target_msg->position.x * target_msg->position.x + 
+                                        target_msg->position.y * target_msg->position.y + 
+                                        target_msg->position.z * target_msg->position.z);
+                std::string info = "Dist: " + std::to_string(dist).substr(0, 4) + "m";
+                cv::putText(raw_image_, info, cv::Point2f(20, 100), 
+                            cv::FONT_HERSHEY_SIMPLEX, 1.0, cv::Scalar(0, 255, 255), 2);
+            }
+        }
     }
   }
 }
