@@ -5,11 +5,11 @@
 #include <angles/angles.h>
 
 namespace helios_cv {
-
+    
+// 状态: [xc, vxc, yc, vyc, za, vza, yaw, v_yaw, r]
+// 观测: [yaw_pos, pitch_pos, dist, yaw_orient]
 class AntiSpinEKF {
 public:
-    // 状态: [xc, vxc, yc, vyc, za, vza, yaw, v_yaw, r]
-    // 观测: [yaw_pos, pitch_pos, dist, yaw_orient]
     using Matrix9d = Eigen::Matrix<double, 9, 9>;
     using Vector9d = Eigen::Matrix<double, 9, 1>;
     using Matrix49d = Eigen::Matrix<double, 4, 9>;
@@ -33,13 +33,7 @@ public:
         x(8) = r0;                                       // r
         
         P.setIdentity();
-        P.diagonal() << 10, 10, 10, 10, 1, 10, 0.1, 100, 0.1;
-    }
-
-    // [temp] 先用着再说
-    void init(const Vector9d& x0, const Matrix9d& P0) {
-        x = x0;
-        P = P0;
+        P.diagonal() << 10, 10, 10, 10, 0.1, 0.1, 0.1, 100, 0.001;
     }
 
     Eigen::VectorXd get_state() const {

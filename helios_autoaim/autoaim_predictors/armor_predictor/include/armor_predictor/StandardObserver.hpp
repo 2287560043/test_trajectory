@@ -40,30 +40,36 @@ typedef struct StandardObserverParams : public BaseObserverParams
 } StandardObserverParams;
 
 
-struct ArmorTracker {
-    AntiSpinEKF ekf; 
+// 定义轴类型
+enum AxisType { LONG_AXIS = 0, SHORT_AXIS = 1 };
+
+struct ArmorTracker
+{
+    // 双 EKF 实例
+    AntiSpinEKF long_ekf;   // 观测长轴中心
+    AntiSpinEKF short_ekf;  // 观测短轴中心
+    
+    // 当前激活的轴（即当前正在观测的轴）
+    AxisType active_axis; 
+    
     double last_timestamp;
     bool is_active;
     
-    void init(const Eigen::Vector3d& xyz_armor, double yaw_armor, double t) {
-        double r0 = 0.20;
+    // 用于逻辑判断的历史数据
+    int last_armors_num;
+    double last_yaw;
 
-        // 反推车体中心
-        double xc = xyz_armor.x() - r0 * std::cos(yaw_armor);
-        double yc = xyz_armor.y() - r0 * std::sin(yaw_armor);
-
-        Eigen::Matrix<double, 9, 1> x0;
-        x0.setZero();
-        // [xc, vxc, yc, vyc, za, vza, yaw, v_yaw, r]
-        x0 << xc, 0, yc, 0, xyz_armor.z(), 0, yaw_armor, 0, r0;
+    ArmorTracker() : active_axis(LONG_AXIS), last_timestamp(0), is_active(false), last_armors_num(0), last_yaw(0) {}
+    void init(const Eigen::Vector3d& armor_pos, double armor_yaw, double t) {
+        // 关键策略：给予不同的初始半径猜测，引导 EKF 分化
+        // 假设长轴半径 ~0.35m-0.45m，短轴半径 ~0.20m-0.25m
+        long_ekf.init(armor_pos, armor_yaw, 0.40); 
+        short_ekf.init(armor_pos, armor_yaw, 0.20);
         
-        Eigen::Matrix<double, 9, 9> P0 = Eigen::Matrix<double, 9, 9>::Identity();
-        // 初始协方差
-        P0.diagonal() << 10, 10, 10, 10, 1, 10, 0.1, 100, 0.1;
-        
-        ekf.init(x0, P0);
         last_timestamp = t;
+        active_axis = LONG_AXIS; // 初始默认认为在长轴（或根据装甲板数量辅助判断）
         is_active = true;
+        last_yaw = armor_yaw;
     }
 };
 
@@ -77,13 +83,18 @@ public:
     autoaim_interfaces::msg::Target predict_target(autoaim_interfaces::msg::Armors armors, double dt, double gimbal_yaw, double bullet_speed) override;
     
     void reset_kalman() override;
-    void track_armor(autoaim_interfaces::msg::Armors armors) override {return;};
+    void track_armor(autoaim_interfaces::msg::Armors armors) override;
     void set_params(void* params) override {return;};
 
 protected:
     std::map<std::string, ArmorTracker> trackers_map_;
     void update_trackers(const autoaim_interfaces::msg::Armors& armors, double current_time);
     std::string select_best_target();
+    // 辅助函数：根据 Z 轴高度和装甲板数量变化判断当前轴
+    void determine_active_axis(ArmorTracker& tracker, const Eigen::Vector3d& armor_pos, int current_armors_num);
+    
+    // 辅助函数：同步 Yaw 和 V_yaw (刚体约束)
+    void sync_yaw_states(ArmorTracker& tracker);
     
     double current_time_;
 

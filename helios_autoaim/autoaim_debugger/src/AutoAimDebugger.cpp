@@ -284,144 +284,6 @@ void AutoAimDebugger::draw_predicted_points()
              cv::Scalar(255, 0, 0), 2);
 }
 
-// void AutoAimDebugger::caculate_target(autoaim_interfaces::msg::Target::SharedPtr target_msg)
-// {
-//   if (target_msg->tracking)
-//   {
-//     target_pose_ros_.clear();
-//     target_rvecs_.clear();
-//     target_tvecs_.clear();
-//     if (target_msg->armors_num == 1)
-//     {
-//       // armor only
-//       geometry_msgs::msg::Pose pose;
-//       tf2::Quaternion tf_q;
-//       tf_q.setRPY(0, target_msg->id == "outpost" ? -0.26 : 0.26, 0);
-//       pose.orientation = tf2::toMsg(tf_q);
-//       pose.position = target_msg->position;
-//       target_pose_ros_.emplace_back(pose);
-//     }
-//     else if (target_msg->armors_num >= 2 && target_msg->armors_num <= 4)
-//     {
-//       // target observer
-//       double yaw = target_msg->yaw, r1 = target_msg->radius_1, r2 = target_msg->radius_2;
-//       double xc = target_msg->position.x, yc = target_msg->position.y, zc = target_msg->position.z;
-//       double vxc = target_msg->velocity.x, vyc = target_msg->velocity.y, vzc = target_msg->velocity.z,
-//              vyaw = target_msg->v_yaw;
-//       double dz = target_msg->dz;
-
-//       bool is_current_pair = true;
-//       size_t a_n = target_msg->armors_num;
-//       geometry_msgs::msg::Point p_a;
-//       double r = 0;
-//       for (size_t i = 0; i < a_n; i++)
-//       {
-//         double tmp_yaw = yaw + i * (2 * M_PI / a_n);
-//         // Only 4 armors has 2 radius and height
-//         if (a_n == 4)
-//         {
-//           r = is_current_pair ? r1 : r2;
-//           p_a.z = zc + (is_current_pair ? 0 : dz);
-//           is_current_pair = !is_current_pair;
-//         }
-//         else
-//         {
-//           r = r1;
-//           p_a.z = zc;
-//         }
-//         p_a.x = xc - r * std::cos(tmp_yaw);
-//         p_a.y = yc - r * std::sin(tmp_yaw);
-//         geometry_msgs::msg::Pose pose;
-
-//         pose.position = p_a;
-//         tf2::Quaternion q;
-//         q.setRPY(0, target_msg->id == "outpost" ? -0.26 : 0.26, tmp_yaw);
-//         pose.orientation = tf2::toMsg(q);
-
-//         // Get target armor corners
-//         target_pose_ros_.emplace_back(pose);
-//       }
-//     }
-//     else if (target_msg->armors_num == 5)
-//     {
-//       // energy target
-//       double yaw = target_msg->yaw, roll = target_msg->v_yaw;
-//       double r = target_msg->radius_1;
-//       double a = target_msg->velocity.x, w = target_msg->velocity.y, phi = target_msg->velocity.z;
-//       double xc = target_msg->position.x, yc = target_msg->position.y, zc = target_msg->position.z;
-//       // Energy Fan
-//       size_t a_n = target_msg->armors_num;
-//       geometry_msgs::msg::Point p_a;
-//       for (size_t i = 0; i < a_n; i++)
-//       {
-//         double tmp_roll = roll + i * (2 * M_PI / a_n);
-//         p_a.x = xc - r * std::sin(-tmp_roll) * std::sin(yaw);
-//         p_a.y = yc + r * std::sin(-tmp_roll) * std::cos(yaw);
-//         p_a.z = zc + r * std::cos(-tmp_roll);
-//         geometry_msgs::msg::Pose pose;
-//         pose.position = p_a;
-//         tf2::Quaternion q;
-//         q.setRPY(tmp_roll, 0, yaw);
-//         pose.orientation = tf2::toMsg(q);
-//         target_pose_ros_.emplace_back(pose);
-//       }
-//     }
-//     // transform armors to camera optical frame
-//     try
-//     {
-//       for (auto& pose : target_pose_ros_)
-//       {
-//         tf2::doTransform(pose, pose, cam2odom_);
-//       }
-//     }
-//     catch (tf2::TransformException& e)
-//     {
-//       RCLCPP_ERROR(this->get_logger(), "tf2 exception: %s", e.what());
-//       return;
-//     }
-//     /// Draw target armors
-//     // convert ros pose to cv pose
-//     for (auto& pose : target_pose_ros_)
-//     {
-//       cv::Mat tvec = (cv::Mat_<double>(3, 1) << pose.position.x, pose.position.y, pose.position.z);
-//       target_tvecs_.emplace_back(tvec);
-//       cv::Quatd q(pose.orientation.w, pose.orientation.x, pose.orientation.y, pose.orientation.z);
-//       target_rvecs_.emplace_back(q);
-//     }
-//     if (target_msg->armors_num == 5)
-//     {
-//       for (std::size_t i = 0; i < target_tvecs_.size(); i++)
-//       {
-//         std::vector<cv::Point2f> image_points;
-//         cv::projectPoints(energy_object_points_, target_rvecs_[i].toRotMat3x3(), target_tvecs_[i], camera_matrix_,
-//                           distortion_coefficients_, image_points);
-//         cv::putText(raw_image_, std::to_string(i), image_points[2], cv::FONT_HERSHEY_SIMPLEX, 0.8,
-//                     cv::Scalar(0, 255, 255), 2);
-//         for (size_t i = 0; i < image_points.size(); i++)
-//         {
-//           cv::line(raw_image_, image_points[i], image_points[(i + 1) % image_points.size()], cv::Scalar(0, 0, 255),
-//                    cv::LINE_4);
-//         }
-//       }
-//     }
-//     else
-//     {
-//       for (std::size_t i = 0; i < target_tvecs_.size(); i++)
-//       {
-//         std::vector<cv::Point2f> image_points;
-//         cv::projectPoints(armor_object_points_, target_rvecs_[i].toRotMat3x3(), target_tvecs_[i], camera_matrix_,
-//                           distortion_coefficients_, image_points);
-//         cv::putText(raw_image_, std::to_string(i), image_points[2], cv::FONT_HERSHEY_SIMPLEX, 0.8,
-//                     cv::Scalar(0, 255, 255), 2);
-//         for (size_t i = 0; i < image_points.size(); i++)
-//         {
-//           cv::line(raw_image_, image_points[i], image_points[(i + 1) % image_points.size()], cv::Scalar(0, 0, 255),
-//                    cv::LINE_4);
-//         }
-//       }
-//     }
-//   }
-// }
 void AutoAimDebugger::caculate_target(autoaim_interfaces::msg::Target::SharedPtr target_msg)
 {
   if (target_msg->tracking)
@@ -449,6 +311,9 @@ void AutoAimDebugger::caculate_target(autoaim_interfaces::msg::Target::SharedPtr
     int armor_num = 4;
     double r1 = target_msg->radius_1; 
     double r2 = target_msg->radius_2;
+    if (target_msg->axis_type != 0) {
+        std::swap(r1, r2);
+    } 
     double dz = target_msg->dz;
     
     // 鲁棒性保护：防止半径为0导致计算错误
@@ -556,9 +421,18 @@ void AutoAimDebugger::caculate_target(autoaim_interfaces::msg::Target::SharedPtr
                 double dist = std::sqrt(target_msg->position.x * target_msg->position.x + 
                                         target_msg->position.y * target_msg->position.y + 
                                         target_msg->position.z * target_msg->position.z);
-                std::string info = "Dist: " + std::to_string(dist).substr(0, 4) + "m";
-                cv::putText(raw_image_, info, cv::Point2f(20, 100), 
+                // std::string dis_str = "Dist: " + std::to_string(dist).substr(0, 4) + "m";
+                std::string r1_str = "r1: " + std::to_string(r1).substr(0, 4) + "m";
+                std::string r2_str = "r2: " + std::to_string(r2).substr(0, 4) + "m";
+                std::string dz_str = "dz: " + std::to_string(dz).substr(0, 4) + "m";
+                cv::putText(raw_image_, r1_str, cv::Point2f(20, 140), 
                             cv::FONT_HERSHEY_SIMPLEX, 1.0, cv::Scalar(0, 255, 255), 2);
+                cv::putText(raw_image_, r2_str, cv::Point2f(20, 180), 
+                            cv::FONT_HERSHEY_SIMPLEX, 1.0, cv::Scalar(0, 255, 255), 2);
+                cv::putText(raw_image_, dz_str, cv::Point2f(20, 220), 
+                            cv::FONT_HERSHEY_SIMPLEX, 1.0, cv::Scalar(0, 255, 255), 2);
+                // cv::putText(raw_image_, dis_str, cv::Point2f(20, 100), 
+                //             cv::FONT_HERSHEY_SIMPLEX, 1.0, cv::Scalar(0, 255, 255), 2);
             }
         }
     }
