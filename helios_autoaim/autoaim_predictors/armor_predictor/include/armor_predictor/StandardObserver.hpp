@@ -1,6 +1,5 @@
 // rebuild on 2026/01/19
-// 放弃了整车估计
-// 转而对每个 armor 配置一个 tracker
+// 极坐标观测
 #pragma once
 
 #include "BaseObserver.hpp"
